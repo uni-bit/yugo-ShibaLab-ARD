@@ -1,12 +1,18 @@
 using System.Globalization;
 using UnityEngine;
 
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
+
+[ExecuteAlways]
 [AddComponentMenu("Pose/Pose Debug Overlay")]
 public class PoseDebugOverlay : MonoBehaviour
 {
     [SerializeField] private UdpQuaternionReceiver receiver;
     [SerializeField] private PoseRotationDriver driver;
     [SerializeField] private TestScreenVisualizer visualizer;
+    [SerializeField] private KeyCode toggleOverlayKey = KeyCode.D;
     [SerializeField] private bool showOverlay = true;
     [SerializeField] private bool showPacketDebug = true;
 
@@ -19,25 +25,30 @@ public class PoseDebugOverlay : MonoBehaviour
 
     private void Awake()
     {
-        if (receiver == null)
+        ResolveReferences();
+    }
+
+    private void OnEnable()
+    {
+        ResolveReferences();
+    }
+
+    private void Update()
+    {
+        if (!Application.isPlaying)
         {
-            receiver = GetComponent<UdpQuaternionReceiver>();
+            return;
         }
 
-        if (driver == null)
+        if (Input.GetKeyDown(toggleOverlayKey))
         {
-            driver = GetComponent<PoseRotationDriver>();
-        }
-
-        if (visualizer == null)
-        {
-            visualizer = GetComponent<TestScreenVisualizer>();
+            ToggleOverlayVisibility();
         }
     }
 
     private void OnGUI()
     {
-        HandleRecenterShortcut();
+        HandleShortcutKeys();
 
         if (!showOverlay)
         {
@@ -71,6 +82,7 @@ public class PoseDebugOverlay : MonoBehaviour
         GUILayout.Label("Applied Euler: " + applied.eulerAngles.ToString("F1"));
         GUILayout.Label("Projection Surface: " + (visualizer != null ? visualizer.CurrentSurfaceName : "-"));
         GUILayout.Label("Recenter Key: C");
+        GUILayout.Label("Debug Toggle Key: " + toggleOverlayKey);
 
         if (driver != null && GUILayout.Button("Reset Calibration", GUILayout.Height(28f)))
         {
@@ -93,7 +105,14 @@ public class PoseDebugOverlay : MonoBehaviour
         GUILayout.EndArea();
     }
 
-    private void HandleRecenterShortcut()
+    public void Configure(UdpQuaternionReceiver receiverReference, PoseRotationDriver driverReference, TestScreenVisualizer visualizerReference)
+    {
+        receiver = receiverReference;
+        driver = driverReference;
+        visualizer = visualizerReference;
+    }
+
+    private void HandleShortcutKeys()
     {
         Event currentEvent = Event.current;
         if (currentEvent == null)
@@ -101,7 +120,19 @@ public class PoseDebugOverlay : MonoBehaviour
             return;
         }
 
-        if (currentEvent.type == EventType.KeyDown && currentEvent.keyCode == KeyCode.C)
+        if (currentEvent.type != EventType.KeyDown)
+        {
+            return;
+        }
+
+        if (currentEvent.keyCode == toggleOverlayKey)
+        {
+            ToggleOverlayVisibility();
+            currentEvent.Use();
+            return;
+        }
+
+        if (currentEvent.keyCode == KeyCode.C)
         {
             ResetAllCalibration();
             currentEvent.Use();
@@ -119,5 +150,36 @@ public class PoseDebugOverlay : MonoBehaviour
         {
             visualizer.ResetReference();
         }
+    }
+
+    private void ResolveReferences()
+    {
+        if (receiver == null)
+        {
+            receiver = GetComponent<UdpQuaternionReceiver>();
+        }
+
+        if (driver == null)
+        {
+            driver = GetComponent<PoseRotationDriver>();
+        }
+
+        if (visualizer == null)
+        {
+            visualizer = GetComponent<TestScreenVisualizer>();
+        }
+    }
+
+    private void ToggleOverlayVisibility()
+    {
+        showOverlay = !showOverlay;
+
+#if UNITY_EDITOR
+        if (!Application.isPlaying)
+        {
+            SceneView.RepaintAll();
+            UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
+        }
+#endif
     }
 }

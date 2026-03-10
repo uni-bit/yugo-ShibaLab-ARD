@@ -1,5 +1,15 @@
 using UnityEngine;
+using UnityEngine.Rendering;
 
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
+
+[ExecuteAlways]
+[RequireComponent(typeof(UdpQuaternionReceiver))]
+[RequireComponent(typeof(PoseRotationDriver))]
+[RequireComponent(typeof(PoseDebugOverlay))]
+[RequireComponent(typeof(TestScreenVisualizer))]
 [AddComponentMenu("Pose/Pose Test Bootstrap")]
 public class PoseTestBootstrap : MonoBehaviour
 {
@@ -11,7 +21,67 @@ public class PoseTestBootstrap : MonoBehaviour
     private const float FrontScreenWidth = ScreenHeightWorld * (1920f / 1080f);
 
     [SerializeField] private bool buildOnStart = true;
+    [SerializeField] private bool buildPreviewInEditMode = true;
+    [SerializeField] private bool forceBlackEnvironment = true;
+    [SerializeField] private bool disableOtherSceneLights = true;
+    [SerializeField] private bool forceBlackEnvironmentInEditMode;
+    [SerializeField] private bool disableOtherSceneLightsInEditMode;
     private bool hasBuilt;
+    private bool editorPreviewQueued;
+
+    private struct SceneLightState
+    {
+        public Light Light;
+        public bool WasEnabled;
+    }
+
+    private readonly System.Collections.Generic.List<SceneLightState> managedSceneLights = new System.Collections.Generic.List<SceneLightState>();
+
+    public Light ActiveSpotLight { get; private set; }
+
+    private void Reset()
+    {
+        EnsureRuntimeComponentsAttached();
+    }
+
+    private void OnEnable()
+    {
+        EnsureRuntimeComponentsAttached();
+
+        if (!Application.isPlaying)
+        {
+            RefreshEditorPreview();
+        }
+    }
+
+    private void OnDisable()
+    {
+        if (!Application.isPlaying)
+        {
+            ClearExistingRig();
+            RestoreManagedSceneLights();
+        }
+
+        ActiveSpotLight = null;
+    }
+
+    private void OnDestroy()
+    {
+        if (!Application.isPlaying)
+        {
+            RestoreManagedSceneLights();
+        }
+    }
+
+    private void OnValidate()
+    {
+        EnsureRuntimeComponentsAttached();
+
+        if (!Application.isPlaying)
+        {
+            RefreshEditorPreview();
+        }
+    }
 
     private void Start()
     {
@@ -26,16 +96,27 @@ public class PoseTestBootstrap : MonoBehaviour
     [ContextMenu("Build Demo")]
     public void BuildDemo()
     {
+        BuildDemoInternal(Application.isPlaying);
+    }
+
+    private void BuildDemoInternal(bool isRuntimeBuild)
+    {
         ClearExistingRig();
-        Screen.SetResolution(1920, 1080, false);
-        RenderSettings.ambientLight = Color.black;
-        SetupDisplays();
+
+        if (isRuntimeBuild)
+        {
+            Screen.SetResolution(1920, 1080, false);
+            SetupDisplays();
+        }
+
+        ApplyBlackEnvironment(isRuntimeBuild);
+
         ProjectionSurface frontSurface;
         ProjectionSurface leftSurface;
         Transform viewerOrigin;
         SetupDemoRig(out frontSurface, out leftSurface, out viewerOrigin);
         SetupCameras(frontSurface, leftSurface, viewerOrigin);
-        hasBuilt = true;
+        hasBuilt = isRuntimeBuild;
     }
  
     private void SetupDisplays()
@@ -109,10 +190,10 @@ public class PoseTestBootstrap : MonoBehaviour
         rotationPivot.transform.localPosition = Vector3.zero;
         rotationPivot.transform.localRotation = Quaternion.identity;
 
-        UdpQuaternionReceiver receiver = rigRoot.AddComponent<UdpQuaternionReceiver>();
-        PoseRotationDriver driver = rigRoot.AddComponent<PoseRotationDriver>();
-        rigRoot.AddComponent<PoseDebugOverlay>();
-        TestScreenVisualizer visualizer = rigRoot.AddComponent<TestScreenVisualizer>();
+        UdpQuaternionReceiver receiver = EnsureComponent<UdpQuaternionReceiver>();
+        PoseRotationDriver driver = EnsureComponent<PoseRotationDriver>();
+        PoseDebugOverlay overlay = EnsureComponent<PoseDebugOverlay>();
+        TestScreenVisualizer visualizer = EnsureComponent<TestScreenVisualizer>();
 
         CreatePointerModel(rotationPivot.transform);
 
@@ -123,15 +204,19 @@ public class PoseTestBootstrap : MonoBehaviour
 
         Light tipLight = tipLightObject.AddComponent<Light>();
         tipLight.type = LightType.Spot;
-        tipLight.spotAngle = 10f;
-        tipLight.range = 20f;
+        tipLight.spotAngle = 18f;
+        tipLight.range = 60f;
         tipLight.intensity = 16f;
         tipLight.color = Color.white;
+        ActiveSpotLight = tipLight;
+
+        ApplySpotlightOnlyLighting(tipLight, Application.isPlaying);
 
         driver.Configure(receiver, rotationPivot.transform, tipLight, 0.72f);
         driver.SetTipLightAlignment(false);
         visualizer.Configure(receiver, tipLight);
         visualizer.ConfigureSurfaces(frontSurface, leftSurface);
+        overlay.Configure(receiver, driver, visualizer);
     }
 
     private static Transform CreateViewerOrigin(Transform parent)
@@ -171,6 +256,8 @@ public class PoseTestBootstrap : MonoBehaviour
 
     private void ClearExistingRig()
     {
+        ActiveSpotLight = null;
+
         for (int index = transform.childCount - 1; index >= 0; index--)
         {
             Transform child = transform.GetChild(index);
@@ -221,5 +308,126 @@ public class PoseTestBootstrap : MonoBehaviour
         {
             renderer.material.color = color;
         }
+    }
+
+    private void EnsureRuntimeComponentsAttached()
+    {
+        EnsureComponent<UdpQuaternionReceiver>();
+        EnsureComponent<PoseRotationDriver>();
+        EnsureComponent<PoseDebugOverlay>();
+        EnsureComponent<TestScreenVisualizer>();
+    }
+
+    private void ApplyBlackEnvironment(bool isRuntimeBuild)
+    {
+        bool shouldForceBlackEnvironment = isRuntimeBuild ? forceBlackEnvironment : forceBlackEnvironmentInEditMode;
+        if (!shouldForceBlackEnvironment)
+        {
+            return;
+        }
+
+        RenderSettings.skybox = null;
+        RenderSettings.ambientMode = AmbientMode.Flat;
+        RenderSettings.ambientLight = Color.black;
+        RenderSettings.ambientIntensity = 0f;
+        RenderSettings.reflectionIntensity = 0f;
+        RenderSettings.defaultReflectionMode = DefaultReflectionMode.Custom;
+
+#if UNITY_EDITOR
+        if (!Application.isPlaying)
+        {
+            UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
+        }
+#endif
+    }
+
+    private void ApplySpotlightOnlyLighting(Light spotlight, bool isRuntimeBuild)
+    {
+        RestoreManagedSceneLights();
+
+        bool shouldDisableOtherSceneLights = isRuntimeBuild ? disableOtherSceneLights : disableOtherSceneLightsInEditMode;
+        if (!shouldDisableOtherSceneLights)
+        {
+            return;
+        }
+
+        Light[] allLights = FindObjectsByType<Light>(FindObjectsSortMode.None);
+        foreach (Light sceneLight in allLights)
+        {
+            if (sceneLight == null || sceneLight == spotlight)
+            {
+                continue;
+            }
+
+            managedSceneLights.Add(new SceneLightState
+            {
+                Light = sceneLight,
+                WasEnabled = sceneLight.enabled
+            });
+
+            sceneLight.enabled = false;
+        }
+    }
+
+    private void RestoreManagedSceneLights()
+    {
+        for (int index = 0; index < managedSceneLights.Count; index++)
+        {
+            SceneLightState state = managedSceneLights[index];
+            if (state.Light != null)
+            {
+                state.Light.enabled = state.WasEnabled;
+            }
+        }
+
+        managedSceneLights.Clear();
+    }
+
+    private void RefreshEditorPreview()
+    {
+        if (buildPreviewInEditMode)
+        {
+            QueueEditorPreviewBuild();
+            return;
+        }
+
+        ClearExistingRig();
+        RestoreManagedSceneLights();
+    }
+
+#if UNITY_EDITOR
+    private void QueueEditorPreviewBuild()
+    {
+        if (editorPreviewQueued || EditorApplication.isPlayingOrWillChangePlaymode)
+        {
+            return;
+        }
+
+        editorPreviewQueued = true;
+        EditorApplication.delayCall += RebuildEditorPreview;
+    }
+
+    private void RebuildEditorPreview()
+    {
+        editorPreviewQueued = false;
+
+        if (this == null || Application.isPlaying || !buildPreviewInEditMode)
+        {
+            return;
+        }
+
+        BuildDemoInternal(false);
+    }
+#endif
+
+    private T EnsureComponent<T>() where T : Component
+    {
+        T component = GetComponent<T>();
+        if (component == null)
+        {
+            component = gameObject.AddComponent<T>();
+        }
+
+        return component;
     }
 }

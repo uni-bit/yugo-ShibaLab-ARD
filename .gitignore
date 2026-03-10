@@ -2,9 +2,9 @@
 /[Tt]emp/
 /[Oo]bj/
 /[Bb]uild/
-/[Bb]uilds/
-/[探]Logs/
-/[ユーザー]UserSettings/
+/[Bb]builds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
 
 # Visual Studio / VS Code 関連
 .vs/
@@ -23,7 +23,9 @@
 
 # OS 関連
 .DS_Store
-Thumbs.db
+.DS_Store?
+[Tt]humbs.db
 
 # Unity のアセットメタデータ以外の一時ファイル
 /[Aa]ssets/AssetStoreTools*
+/[Aa]ssets/WebGLTemplates/*/TemplateData/
