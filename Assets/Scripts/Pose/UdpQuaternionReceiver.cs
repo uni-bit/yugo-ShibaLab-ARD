@@ -1,0 +1,1004 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Threading;
+using UnityEngine;
+
+[AddComponentMenu("Networking/UDP Quaternion Receiver")]
+public class UdpQuaternionReceiver : MonoBehaviour
+{
+    private struct OscMessage
+    {
+        public string Address;
+        public string TypeTags;
+        public List<float> FloatArguments;
+        public List<string> DebugArguments;
+    }
+
+    private struct QuaternionPacketParseResult
+    {
+        public bool Succeeded;
+        public bool HasCompleteQuaternion;
+        public Quaternion Quaternion;
+        public string Message;
+    }
+
+    [Header("UDP Settings")]
+    [SerializeField] private int listenPort = 8000;
+
+    [Header("Coordinate Conversion")]
+    [SerializeField] private bool convertRightHandedToLeftHanded = true;
+    [SerializeField] private Vector3 sensorToUnityEulerOffset = Vector3.zero;
+
+    [Header("Touch Input")]
+    [SerializeField] private float touchRecenterCooldownSeconds = 0.25f;
+
+    private readonly object syncRoot = new object();
+    private static readonly Regex FloatRegex = new Regex(@"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?", RegexOptions.Compiled);
+
+    private UdpClient udpClient;
+    private Thread receiveThread;
+    private volatile bool isRunning;
+    private readonly Queue<string> recentPacketLogs = new Queue<string>();
+
+    private Quaternion pendingRotation = Quaternion.identity;
+    private bool hasPendingRotation;
+    private Vector4 partialQuaternion;
+    private bool hasX;
+    private bool hasY;
+    private bool hasZ;
+    private bool hasW;
+    private DateTime lastTouchRecenterTime = DateTime.MinValue;
+
+    public Quaternion LatestRawRotation { get; private set; } = Quaternion.identity;
+    public Quaternion LatestConvertedRotation { get; private set; } = Quaternion.identity;
+    public int ReceivedPacketCount { get; private set; }
+    public int RecenterRequestCount { get; private set; }
+    public DateTime LastRecenterTime { get; private set; } = DateTime.MinValue;
+    public string LastSender { get; private set; } = "-";
+    public string LastStatus { get; private set; } = "Waiting for UDP packets...";
+    public DateTime LastReceivedTime { get; private set; } = DateTime.MinValue;
+    public string RecentPacketDebug { get; private set; } = "-";
+
+    private void OnEnable()
+    {
+        StartReceiver();
+    }
+
+    private void OnDisable()
+    {
+        StopReceiver();
+    }
+
+    private void OnDestroy()
+    {
+        StopReceiver();
+    }
+
+    public bool ConsumeLatestRotation(out Quaternion rotation)
+    {
+        lock (syncRoot)
+        {
+            if (!hasPendingRotation)
+            {
+                rotation = LatestConvertedRotation;
+                return false;
+            }
+
+            rotation = pendingRotation;
+            hasPendingRotation = false;
+            return true;
+        }
+    }
+
+    private void StartReceiver()
+    {
+        if (isRunning)
+        {
+            return;
+        }
+
+        try
+        {
+            udpClient = new UdpClient(listenPort);
+            udpClient.Client.ReceiveTimeout = 1000;
+
+            isRunning = true;
+            receiveThread = new Thread(ReceiveLoop)
+            {
+                IsBackground = true,
+                Name = "UDP Quaternion Receiver"
+            };
+            receiveThread.Start();
+
+            lock (syncRoot)
+            {
+                LastStatus = string.Format(CultureInfo.InvariantCulture, "Listening on UDP {0}", listenPort);
+            }
+        }
+        catch (Exception ex)
+        {
+            isRunning = false;
+            lock (syncRoot)
+            {
+                LastStatus = "Receiver start failed: " + ex.Message;
+            }
+            Debug.LogError(LastStatus, this);
+        }
+    }
+
+    private void StopReceiver()
+    {
+        isRunning = false;
+
+        if (udpClient != null)
+        {
+            try
+            {
+                udpClient.Close();
+            }
+            catch
+            {
+            }
+
+            udpClient = null;
+        }
+
+        if (receiveThread != null && receiveThread.IsAlive)
+        {
+            if (!receiveThread.Join(500))
+            {
+                receiveThread.Interrupt();
+            }
+        }
+
+        receiveThread = null;
+    }
+
+    private void ReceiveLoop()
+    {
+        IPEndPoint remoteEndPoint = new IPEndPoint(IPAddress.Any, 0);
+
+        while (isRunning)
+        {
+            try
+            {
+                byte[] packet = udpClient.Receive(ref remoteEndPoint);
+                RecordPacketDebug(packet, remoteEndPoint);
+
+                bool touchTriggered = false;
+                List<OscMessage> oscMessages;
+                string oscError;
+                if (TryParseOscPacket(packet, out oscMessages, out oscError))
+                {
+                    touchTriggered = TryRequestRecenterFromTouchMessages(oscMessages);
+                }
+
+                QuaternionPacketParseResult parseResult = TryParseQuaternionPacket(packet);
+                if (!parseResult.Succeeded)
+                {
+                    lock (syncRoot)
+                    {
+                        LastSender = remoteEndPoint.ToString();
+                        LastReceivedTime = DateTime.Now;
+                        LastStatus = touchTriggered
+                            ? "Touch packet received. Recenter requested."
+                            : "Packet received but parse failed.";
+                    }
+                    continue;
+                }
+
+                if (!parseResult.HasCompleteQuaternion)
+                {
+                    lock (syncRoot)
+                    {
+                        LastSender = remoteEndPoint.ToString();
+                        LastReceivedTime = DateTime.Now;
+                        LastStatus = touchTriggered
+                            ? parseResult.Message + " Touch packet received."
+                            : parseResult.Message;
+                    }
+                    continue;
+                }
+
+                Quaternion rawQuaternion = parseResult.Quaternion;
+
+                Quaternion convertedQuaternion = QuaternionCoordinateConverter.ConvertRightHandedYUpToUnity(
+                    rawQuaternion,
+                    sensorToUnityEulerOffset,
+                    convertRightHandedToLeftHanded);
+
+                lock (syncRoot)
+                {
+                    LatestRawRotation = rawQuaternion;
+                    LatestConvertedRotation = convertedQuaternion;
+                    pendingRotation = convertedQuaternion;
+                    hasPendingRotation = true;
+                    ReceivedPacketCount++;
+                    LastSender = remoteEndPoint.ToString();
+                    LastReceivedTime = DateTime.Now;
+                    LastStatus = touchTriggered
+                        ? parseResult.Message + " Touch packet received."
+                        : parseResult.Message;
+                }
+            }
+            catch (SocketException ex)
+            {
+                if (ex.SocketErrorCode == SocketError.TimedOut)
+                {
+                    continue;
+                }
+
+                if (!isRunning)
+                {
+                    break;
+                }
+
+                lock (syncRoot)
+                {
+                    LastStatus = "Socket error: " + ex.Message;
+                }
+            }
+            catch (ObjectDisposedException)
+            {
+                break;
+            }
+            catch (ThreadInterruptedException)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                lock (syncRoot)
+                {
+                    LastStatus = "Receive error: " + ex.Message;
+                }
+            }
+        }
+    }
+
+    private QuaternionPacketParseResult TryParseQuaternionPacket(byte[] data)
+    {
+        Quaternion quaternion;
+        List<OscMessage> oscMessages;
+        string oscError;
+        if (TryParseOscPacket(data, out oscMessages, out oscError))
+        {
+            QuaternionPacketParseResult oscResult = TryBuildQuaternionFromOscMessages(oscMessages);
+            if (oscResult.Succeeded)
+            {
+                return oscResult;
+            }
+        }
+
+        if (TryParseTextQuaternion(data, out quaternion))
+        {
+            return CreateCompleteResult(quaternion, "Text quaternion packet received.");
+        }
+
+        if (TryParseBinaryQuaternion(data, out quaternion))
+        {
+            return CreateCompleteResult(quaternion, "Binary quaternion packet received.");
+        }
+
+        return default;
+    }
+
+    private QuaternionPacketParseResult TryBuildQuaternionFromOscMessages(List<OscMessage> messages)
+    {
+        bool hasQuaternionComponent = false;
+
+        for (int index = 0; index < messages.Count; index++)
+        {
+            OscMessage message = messages[index];
+
+            if (message.FloatArguments != null && message.FloatArguments.Count >= 4)
+            {
+                Quaternion quaternion = new Quaternion(
+                    message.FloatArguments[0],
+                    message.FloatArguments[1],
+                    message.FloatArguments[2],
+                    message.FloatArguments[3]);
+
+                if (IsFiniteQuaternion(quaternion))
+                {
+                    return CreateCompleteResult(quaternion, "OSC quaternion packet received.");
+                }
+            }
+
+            if (message.FloatArguments == null || message.FloatArguments.Count != 1)
+            {
+                continue;
+            }
+
+            string componentName = ExtractQuaternionComponentFromAddress(message.Address);
+            if (string.IsNullOrEmpty(componentName))
+            {
+                continue;
+            }
+
+            hasQuaternionComponent = true;
+            QuaternionPacketParseResult partialResult = BuildQuaternionFromComponent(componentName, message.FloatArguments[0]);
+            if (partialResult.HasCompleteQuaternion)
+            {
+                return partialResult;
+            }
+        }
+
+        if (hasQuaternionComponent)
+        {
+            return new QuaternionPacketParseResult
+            {
+                Succeeded = true,
+                HasCompleteQuaternion = false,
+                Message = BuildPartialComponentStatus()
+            };
+        }
+
+        return default;
+    }
+
+    private QuaternionPacketParseResult BuildQuaternionFromComponent(string componentName, float componentValue)
+    {
+        string normalized = NormalizeComponentName(componentName);
+        if (string.IsNullOrEmpty(normalized))
+        {
+            return default;
+        }
+
+        switch (normalized)
+        {
+            case "x":
+                partialQuaternion.x = componentValue;
+                hasX = true;
+                break;
+            case "y":
+                partialQuaternion.y = componentValue;
+                hasY = true;
+                break;
+            case "z":
+                partialQuaternion.z = componentValue;
+                hasZ = true;
+                break;
+            case "w":
+                partialQuaternion.w = componentValue;
+                hasW = true;
+                break;
+            default:
+                return default;
+        }
+
+        if (!(hasX && hasY && hasZ && hasW))
+        {
+            return new QuaternionPacketParseResult
+            {
+                Succeeded = true,
+                HasCompleteQuaternion = false,
+                Message = BuildPartialComponentStatus()
+            };
+        }
+
+        Quaternion quaternion = new Quaternion(partialQuaternion.x, partialQuaternion.y, partialQuaternion.z, partialQuaternion.w);
+        hasX = false;
+        hasY = false;
+        hasZ = false;
+        hasW = false;
+
+        if (!IsFiniteQuaternion(quaternion))
+        {
+            return default;
+        }
+
+        return CreateCompleteResult(quaternion, "OSC quaternion components assembled.");
+    }
+
+    private string BuildPartialComponentStatus()
+    {
+        return string.Format(
+            CultureInfo.InvariantCulture,
+            "Waiting quaternion components x:{0} y:{1} z:{2} w:{3}",
+            hasX ? partialQuaternion.x.ToString("F4", CultureInfo.InvariantCulture) : "-",
+            hasY ? partialQuaternion.y.ToString("F4", CultureInfo.InvariantCulture) : "-",
+            hasZ ? partialQuaternion.z.ToString("F4", CultureInfo.InvariantCulture) : "-",
+            hasW ? partialQuaternion.w.ToString("F4", CultureInfo.InvariantCulture) : "-");
+    }
+
+    private static QuaternionPacketParseResult CreateCompleteResult(Quaternion quaternion, string message)
+    {
+        return new QuaternionPacketParseResult
+        {
+            Succeeded = true,
+            HasCompleteQuaternion = true,
+            Quaternion = quaternion,
+            Message = message
+        };
+    }
+
+    private static bool TryParseTextQuaternion(byte[] data, out Quaternion quaternion)
+    {
+        quaternion = Quaternion.identity;
+
+        string text = Encoding.UTF8.GetString(data).Trim('\0', ' ', '\r', '\n', '\t');
+        if (string.IsNullOrEmpty(text))
+        {
+            return false;
+        }
+
+        MatchCollection matches = FloatRegex.Matches(text);
+        if (matches.Count < 4)
+        {
+            return false;
+        }
+
+        float x;
+        float y;
+        float z;
+        float w;
+
+        if (!float.TryParse(matches[0].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out x)
+            || !float.TryParse(matches[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out y)
+            || !float.TryParse(matches[2].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out z)
+            || !float.TryParse(matches[3].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out w))
+        {
+            return false;
+        }
+
+        quaternion = new Quaternion(x, y, z, w);
+        return IsFiniteQuaternion(quaternion);
+    }
+
+    private static bool TryParseBinaryQuaternion(byte[] data, out Quaternion quaternion)
+    {
+        quaternion = Quaternion.identity;
+
+        if (data == null || data.Length != 16)
+        {
+            return false;
+        }
+
+        Quaternion littleEndian = new Quaternion(
+            ReadFloatLittleEndian(data, 0),
+            ReadFloatLittleEndian(data, 4),
+            ReadFloatLittleEndian(data, 8),
+            ReadFloatLittleEndian(data, 12));
+
+        Quaternion bigEndian = new Quaternion(
+            ReadFloatBigEndian(data, 0),
+            ReadFloatBigEndian(data, 4),
+            ReadFloatBigEndian(data, 8),
+            ReadFloatBigEndian(data, 12));
+
+        bool littleValid = IsFiniteQuaternion(littleEndian);
+        bool bigValid = IsFiniteQuaternion(bigEndian);
+
+        if (!littleValid && !bigValid)
+        {
+            return false;
+        }
+
+        if (littleValid && !bigValid)
+        {
+            quaternion = littleEndian;
+            return true;
+        }
+
+        if (!littleValid && bigValid)
+        {
+            quaternion = bigEndian;
+            return true;
+        }
+
+        float littleScore = Mathf.Abs(1f - QuaternionMagnitudeSquared(littleEndian));
+        float bigScore = Mathf.Abs(1f - QuaternionMagnitudeSquared(bigEndian));
+
+        quaternion = littleScore <= bigScore ? littleEndian : bigEndian;
+        return true;
+    }
+
+    private static bool TryParseOscPacket(byte[] data, out List<OscMessage> messages, out string error)
+    {
+        messages = new List<OscMessage>();
+        error = null;
+
+        if (data == null || data.Length == 0)
+        {
+            return false;
+        }
+
+        if (IsOscBundle(data, 0, data.Length))
+        {
+            return TryParseOscBundle(data, 0, data.Length, messages, out error);
+        }
+
+        if (data[0] == (byte)'/')
+        {
+            return TryParseOscMessage(data, 0, data.Length, messages, out error);
+        }
+
+        return false;
+    }
+
+    private static bool TryParseOscBundle(byte[] data, int startIndex, int length, List<OscMessage> messages, out string error)
+    {
+        error = null;
+        int endIndex = startIndex + length;
+        if (length < 16 || !IsOscBundle(data, startIndex, length))
+        {
+            return false;
+        }
+
+        int offset = startIndex + 16;
+        while (offset < endIndex)
+        {
+            if (offset + 4 > endIndex)
+            {
+                error = "OSC bundle element size is truncated.";
+                return false;
+            }
+
+            int elementSize = ReadIntBigEndian(data, offset);
+            offset += 4;
+
+            if (elementSize <= 0 || offset + elementSize > endIndex)
+            {
+                error = "OSC bundle element size is invalid.";
+                return false;
+            }
+
+            if (IsOscBundle(data, offset, elementSize))
+            {
+                if (!TryParseOscBundle(data, offset, elementSize, messages, out error))
+                {
+                    return false;
+                }
+            }
+            else if (data[offset] == (byte)'/')
+            {
+                if (!TryParseOscMessage(data, offset, elementSize, messages, out error))
+                {
+                    return false;
+                }
+            }
+
+            offset += elementSize;
+        }
+
+        return messages.Count > 0;
+    }
+
+    private static bool TryParseOscMessage(byte[] data, int startIndex, int length, List<OscMessage> messages, out string error)
+    {
+        error = null;
+        int endIndex = startIndex + length;
+
+        if (length <= 0 || startIndex < 0 || endIndex > data.Length || data[startIndex] != (byte)'/')
+        {
+            return false;
+        }
+
+        int addressEnd = FindOscStringEnd(data, startIndex, endIndex);
+        if (addressEnd < 0)
+        {
+            error = "OSC address was not terminated.";
+            return false;
+        }
+
+        string address = Encoding.ASCII.GetString(data, startIndex, addressEnd - startIndex);
+        int typeTagOffset = AlignOscIndex(addressEnd + 1);
+        if (typeTagOffset >= endIndex)
+        {
+            error = "OSC typetag offset is invalid.";
+            return false;
+        }
+
+        int typeTagEnd = FindOscStringEnd(data, typeTagOffset, endIndex);
+        if (typeTagEnd < 0)
+        {
+            error = "OSC typetag was not terminated.";
+            return false;
+        }
+
+        string typeTags = Encoding.ASCII.GetString(data, typeTagOffset, typeTagEnd - typeTagOffset);
+        if (string.IsNullOrEmpty(typeTags) || typeTags[0] != ',')
+        {
+            error = "OSC typetag is invalid.";
+            return false;
+        }
+
+        int payloadOffset = AlignOscIndex(typeTagEnd + 1);
+        List<float> floatArguments = new List<float>();
+        List<string> debugArguments = new List<string>();
+
+        for (int i = 1; i < typeTags.Length; i++)
+        {
+            char tag = typeTags[i];
+
+            switch (tag)
+            {
+                case 'f':
+                    if (payloadOffset + 4 > endIndex)
+                    {
+                        error = "OSC float payload is truncated.";
+                        return false;
+                    }
+
+                    float floatValue = ReadFloatBigEndian(data, payloadOffset);
+                    payloadOffset += 4;
+                    floatArguments.Add(floatValue);
+                    debugArguments.Add(floatValue.ToString("F6", CultureInfo.InvariantCulture));
+                    break;
+
+                case 'i':
+                    if (payloadOffset + 4 > endIndex)
+                    {
+                        error = "OSC int payload is truncated.";
+                        return false;
+                    }
+
+                    int intValue = ReadIntBigEndian(data, payloadOffset);
+                    payloadOffset += 4;
+                    debugArguments.Add(intValue.ToString(CultureInfo.InvariantCulture));
+                    break;
+
+                case 's':
+                    int stringEnd = FindOscStringEnd(data, payloadOffset, endIndex);
+                    if (stringEnd < 0)
+                    {
+                        error = "OSC string payload is truncated.";
+                        return false;
+                    }
+
+                    string stringValue = Encoding.ASCII.GetString(data, payloadOffset, stringEnd - payloadOffset);
+                    payloadOffset = AlignOscIndex(stringEnd + 1);
+                    debugArguments.Add("\"" + stringValue + "\"");
+                    break;
+
+                case 'T':
+                    debugArguments.Add("true");
+                    break;
+
+                case 'F':
+                    debugArguments.Add("false");
+                    break;
+
+                default:
+                    error = "Unsupported OSC typetag: " + tag;
+                    return false;
+            }
+        }
+
+        messages.Add(new OscMessage
+        {
+            Address = address,
+            TypeTags = typeTags,
+            FloatArguments = floatArguments,
+            DebugArguments = debugArguments
+        });
+
+        return true;
+    }
+
+    private static bool IsOscBundle(byte[] data, int startIndex, int length)
+    {
+        return length >= 8
+            && startIndex >= 0
+            && startIndex + length <= data.Length
+            && data[startIndex] == (byte)'#'
+            && Encoding.ASCII.GetString(data, startIndex, 8) == "#bundle\0";
+    }
+
+    private static string ExtractQuaternionComponentFromAddress(string address)
+    {
+        if (string.IsNullOrEmpty(address))
+        {
+            return null;
+        }
+
+        string normalized = address.Trim().ToLowerInvariant();
+        normalized = normalized.Replace("\\", "/");
+        normalized = normalized.Replace(":", "/");
+        normalized = normalized.Trim('/');
+
+        string[] parts = normalized.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+        for (int i = 0; i < parts.Length - 1; i++)
+        {
+            if (parts[i] == "quaternion")
+            {
+                return NormalizeComponentName(parts[i + 1]);
+            }
+        }
+
+        if (parts.Length > 0)
+        {
+            return NormalizeComponentName(parts[parts.Length - 1]);
+        }
+
+        return null;
+    }
+
+    private bool TryRequestRecenterFromTouchMessages(List<OscMessage> messages)
+    {
+        if (messages == null || messages.Count == 0)
+        {
+            return false;
+        }
+
+        for (int index = 0; index < messages.Count; index++)
+        {
+            if (!IsActiveTouchMessage(messages[index]))
+            {
+                continue;
+            }
+
+            lock (syncRoot)
+            {
+                DateTime now = DateTime.UtcNow;
+                double secondsSinceLastTrigger = lastTouchRecenterTime == DateTime.MinValue
+                    ? double.MaxValue
+                    : (now - lastTouchRecenterTime).TotalSeconds;
+
+                if (secondsSinceLastTrigger < touchRecenterCooldownSeconds)
+                {
+                    return false;
+                }
+
+                lastTouchRecenterTime = now;
+                LastRecenterTime = DateTime.Now;
+                RecenterRequestCount++;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsActiveTouchMessage(OscMessage message)
+    {
+        if (!AddressLooksLikeTouch(message.Address))
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrEmpty(message.TypeTags))
+        {
+            if (message.TypeTags.IndexOf('T') >= 0)
+            {
+                return true;
+            }
+
+            if (message.TypeTags.IndexOf('F') >= 0)
+            {
+                return false;
+            }
+        }
+
+        if (message.FloatArguments != null && message.FloatArguments.Count >= 2)
+        {
+            return true;
+        }
+
+        if (message.FloatArguments != null && message.FloatArguments.Count == 1)
+        {
+            return message.FloatArguments[0] > 0.5f;
+        }
+
+        return false;
+    }
+
+    private static bool AddressLooksLikeTouch(string address)
+    {
+        if (string.IsNullOrEmpty(address))
+        {
+            return false;
+        }
+
+        string normalized = address.Trim().ToLowerInvariant();
+        normalized = normalized.Replace("\\", "/");
+        normalized = normalized.Replace(":", "/");
+        normalized = normalized.Trim('/');
+
+        string[] parts = normalized.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+        for (int index = 0; index < parts.Length; index++)
+        {
+            if (parts[index].Contains("touch"))
+            {
+                return true;
+            }
+        }
+
+        return normalized.Contains("touch");
+    }
+
+    private static string NormalizeComponentName(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return null;
+        }
+
+        string normalized = value.Trim().ToLowerInvariant();
+        if (normalized.EndsWith("x", StringComparison.Ordinal))
+        {
+            return "x";
+        }
+
+        if (normalized.EndsWith("y", StringComparison.Ordinal))
+        {
+            return "y";
+        }
+
+        if (normalized.EndsWith("z", StringComparison.Ordinal))
+        {
+            return "z";
+        }
+
+        if (normalized.EndsWith("w", StringComparison.Ordinal))
+        {
+            return "w";
+        }
+
+        return null;
+    }
+
+    private static int FindOscStringEnd(byte[] data, int startIndex, int endIndex)
+    {
+        for (int index = startIndex; index < endIndex; index++)
+        {
+            if (data[index] == 0)
+            {
+                return index;
+            }
+        }
+
+        return -1;
+    }
+
+    private static int AlignOscIndex(int index)
+    {
+        return (index + 3) & ~3;
+    }
+
+    private static int ReadIntBigEndian(byte[] data, int offset)
+    {
+        if (!BitConverter.IsLittleEndian)
+        {
+            return BitConverter.ToInt32(data, offset);
+        }
+
+        byte[] reversed = new byte[4];
+        Array.Copy(data, offset, reversed, 0, 4);
+        Array.Reverse(reversed);
+        return BitConverter.ToInt32(reversed, 0);
+    }
+
+    private static float ReadFloatLittleEndian(byte[] data, int offset)
+    {
+        if (BitConverter.IsLittleEndian)
+        {
+            return BitConverter.ToSingle(data, offset);
+        }
+
+        byte[] reversed = new byte[4];
+        Array.Copy(data, offset, reversed, 0, 4);
+        Array.Reverse(reversed);
+        return BitConverter.ToSingle(reversed, 0);
+    }
+
+    private static float ReadFloatBigEndian(byte[] data, int offset)
+    {
+        if (!BitConverter.IsLittleEndian)
+        {
+            return BitConverter.ToSingle(data, offset);
+        }
+
+        byte[] reversed = new byte[4];
+        Array.Copy(data, offset, reversed, 0, 4);
+        Array.Reverse(reversed);
+        return BitConverter.ToSingle(reversed, 0);
+    }
+
+    private static bool IsFiniteQuaternion(Quaternion quaternion)
+    {
+        return IsFinite(quaternion.x)
+            && IsFinite(quaternion.y)
+            && IsFinite(quaternion.z)
+            && IsFinite(quaternion.w);
+    }
+
+    private static bool IsFinite(float value)
+    {
+        return !float.IsNaN(value) && !float.IsInfinity(value);
+    }
+
+    private static float QuaternionMagnitudeSquared(Quaternion quaternion)
+    {
+        return quaternion.x * quaternion.x
+            + quaternion.y * quaternion.y
+            + quaternion.z * quaternion.z
+            + quaternion.w * quaternion.w;
+    }
+
+    private void RecordPacketDebug(byte[] packet, IPEndPoint remoteEndPoint)
+    {
+        string summary = BuildPacketDebugSummary(packet, remoteEndPoint);
+
+        lock (syncRoot)
+        {
+            recentPacketLogs.Enqueue(summary);
+            while (recentPacketLogs.Count > 6)
+            {
+                recentPacketLogs.Dequeue();
+            }
+
+            RecentPacketDebug = string.Join("\n\n", recentPacketLogs.ToArray());
+        }
+    }
+
+    private static string BuildPacketDebugSummary(byte[] packet, IPEndPoint remoteEndPoint)
+    {
+        StringBuilder builder = new StringBuilder();
+        builder.AppendFormat(CultureInfo.InvariantCulture, "[{0:HH:mm:ss.fff}] {1} bytes={2}", DateTime.Now, remoteEndPoint, packet != null ? packet.Length : 0);
+
+        if (packet == null || packet.Length == 0)
+        {
+            return builder.ToString();
+        }
+
+        List<OscMessage> oscMessages;
+        string oscError;
+        if (TryParseOscPacket(packet, out oscMessages, out oscError))
+        {
+            for (int i = 0; i < oscMessages.Count; i++)
+            {
+                OscMessage message = oscMessages[i];
+                builder.Append("\nOSC ");
+                builder.Append(message.Address);
+                builder.Append(' ');
+                builder.Append(message.TypeTags);
+
+                if (message.DebugArguments != null && message.DebugArguments.Count > 0)
+                {
+                    builder.Append(" -> ");
+                    builder.Append(string.Join(", ", message.DebugArguments.ToArray()));
+                }
+            }
+
+            return builder.ToString();
+        }
+
+        if (!string.IsNullOrEmpty(oscError))
+        {
+            builder.Append("\nOSC parse error: ");
+            builder.Append(oscError);
+        }
+
+        string text = Encoding.UTF8.GetString(packet).Trim('\0', '\r', '\n', ' ');
+        if (!string.IsNullOrEmpty(text))
+        {
+            builder.Append("\nText: ");
+            builder.Append(text.Length > 120 ? text.Substring(0, 120) : text);
+        }
+
+        builder.Append("\nHex: ");
+        int hexLength = Mathf.Min(packet.Length, 32);
+        for (int i = 0; i < hexLength; i++)
+        {
+            builder.Append(packet[i].ToString("X2", CultureInfo.InvariantCulture));
+            if (i + 1 < hexLength)
+            {
+                builder.Append(' ');
+            }
+        }
+
+        if (packet.Length > hexLength)
+        {
+            builder.Append(" ...");
+        }
+
+        return builder.ToString();
+    }
+}
