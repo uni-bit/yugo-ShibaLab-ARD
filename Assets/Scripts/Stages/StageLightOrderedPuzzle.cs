@@ -61,6 +61,14 @@ public class StageLightOrderedPuzzle : MonoBehaviour
         AdvanceProgress();
     }
 
+    public void Configure(StageLightCreatureTarget[] orderedTargets, GameObject[] activateOnSolved, GameObject[] deactivateOnSolved)
+    {
+        targets = orderedTargets;
+        activateOnComplete = activateOnSolved;
+        deactivateOnComplete = deactivateOnSolved;
+        ResetPuzzle();
+    }
+
     public void ResetPuzzle()
     {
         IsSolved = false;

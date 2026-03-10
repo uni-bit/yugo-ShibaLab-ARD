@@ -306,7 +306,25 @@ public class PoseTestBootstrap : MonoBehaviour
         MeshRenderer renderer = target.GetComponent<MeshRenderer>();
         if (renderer != null)
         {
-            renderer.material.color = color;
+            Material sharedMaterial = renderer.sharedMaterial;
+            if (sharedMaterial == null)
+            {
+                Shader shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+                if (shader == null)
+                {
+                    return;
+                }
+
+                sharedMaterial = new Material(shader);
+                renderer.sharedMaterial = sharedMaterial;
+            }
+
+            if (sharedMaterial.HasProperty("_BaseColor"))
+            {
+                sharedMaterial.SetColor("_BaseColor", color);
+            }
+
+            sharedMaterial.color = color;
         }
     }
 

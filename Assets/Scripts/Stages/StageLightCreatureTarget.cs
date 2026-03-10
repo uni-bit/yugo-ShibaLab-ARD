@@ -3,7 +3,7 @@ using UnityEngine;
 [AddComponentMenu("Stages/Stage 1 Creature Target")]
 public class StageLightCreatureTarget : MonoBehaviour
 {
-    private enum ReactionMode
+    public enum ReactionMode
     {
         Hide,
         Hop
@@ -62,6 +62,22 @@ public class StageLightCreatureTarget : MonoBehaviour
     {
         IsSolved = solved;
         reactionTimer = 0f;
+    }
+
+    public void Configure(SpotlightSensor sensorReference, Transform animatedRootReference, ReactionMode reaction)
+    {
+        spotlightSensor = sensorReference;
+        animatedRoot = animatedRootReference;
+        reactionMode = reaction;
+
+        if (animatedRoot == null)
+        {
+            animatedRoot = transform;
+        }
+
+        initialLocalPosition = animatedRoot.localPosition;
+        initialLocalRotation = animatedRoot.localRotation;
+        ResetTargetState();
     }
 
     public void ResetTargetState()

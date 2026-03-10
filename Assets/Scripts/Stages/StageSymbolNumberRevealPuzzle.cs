@@ -45,6 +45,15 @@ public class StageSymbolNumberRevealPuzzle : MonoBehaviour
         SetCompletionObjects(true);
     }
 
+    public void Configure(StageSymbolNumberRevealTarget[] targets, GameObject[] activateOnSolved, GameObject[] deactivateOnSolved)
+    {
+        revealTargets = targets;
+        activateOnComplete = activateOnSolved;
+        deactivateOnComplete = deactivateOnSolved;
+        IsSolved = false;
+        SetCompletionObjects(false);
+    }
+
     private void SetCompletionObjects(bool solved)
     {
         for (int index = 0; index < activateOnComplete.Length; index++)

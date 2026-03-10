@@ -14,6 +14,7 @@ public class SpotlightSensor : MonoBehaviour
 
     public bool IsLit { get; private set; }
     public float Exposure01 { get; private set; }
+    public Light SourceLight => sourceLight;
 
     private void Reset()
     {
@@ -24,9 +25,29 @@ public class SpotlightSensor : MonoBehaviour
 
     private void Update()
     {
+        RefreshState();
+    }
+
+    public void RefreshState()
+    {
         ResolveLight();
         Exposure01 = EvaluateExposure();
         IsLit = Exposure01 >= activationThreshold;
+    }
+
+    public float EvaluateExposureAtPoint(Vector3 worldPosition)
+    {
+        ResolveLight();
+        return EvaluateExposureAtPointInternal(worldPosition);
+    }
+
+    public void Configure(PoseTestBootstrap bootstrapReference, Light lightSource, Transform samplePointReference, Renderer sampleRendererReference, Collider sampleColliderReference)
+    {
+        bootstrap = bootstrapReference;
+        sourceLight = lightSource;
+        samplePoint = samplePointReference;
+        sampleRenderer = sampleRendererReference;
+        sampleCollider = sampleColliderReference;
     }
 
     public void SetLightSource(Light lightSource)
@@ -54,12 +75,16 @@ public class SpotlightSensor : MonoBehaviour
 
     private float EvaluateExposure()
     {
+        return EvaluateExposureAtPointInternal(GetSampleWorldPosition());
+    }
+
+    private float EvaluateExposureAtPointInternal(Vector3 sampleWorldPosition)
+    {
         if (sourceLight == null || !sourceLight.enabled || sourceLight.type != LightType.Spot)
         {
             return 0f;
         }
 
-        Vector3 sampleWorldPosition = GetSampleWorldPosition();
         Vector3 lightToSample = sampleWorldPosition - sourceLight.transform.position;
         float distance = lightToSample.magnitude;
 
