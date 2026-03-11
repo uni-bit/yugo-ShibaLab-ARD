@@ -7,8 +7,8 @@ public class StageSymbolMappingDisplay : MonoBehaviour
     [SerializeField] private string mappingText = "□=4";
     [SerializeField] private SpotlightSensor spotlightSensor;
     [SerializeField] private Vector3 localPosition = new Vector3(0f, 0.02f, -0.19f);
-    [SerializeField] private float characterSize = 0.22f;
-    [SerializeField] private int fontSize = 96;
+    [SerializeField] private float characterSize = 0.11f;
+    [SerializeField] private int fontSize = 48;
     [SerializeField] private float visibleExposureThreshold = 0.02f;
     [SerializeField] private Color hiddenTextColor = new Color(0f, 0f, 0f, 0f);
     [SerializeField] private Color litTextColor = new Color(0.45f, 0.95f, 1f, 1f);
@@ -52,6 +52,8 @@ public class StageSymbolMappingDisplay : MonoBehaviour
     public void Configure(string text)
     {
         mappingText = text;
+        characterSize = 0.11f;
+        fontSize = 48;
         RefreshState();
     }
 
@@ -138,6 +140,8 @@ public class StageSymbolMappingDisplay : MonoBehaviour
         {
             cachedRenderer.sharedMaterial = cachedTextMesh.font.material;
         }
+
+        StageSpotlightMaterialUtility.ApplySpotlitText(cachedTextMesh, hiddenTextColor, litTextColor);
     }
 
     private void ResolveSensor()
@@ -155,12 +159,8 @@ public class StageSymbolMappingDisplay : MonoBehaviour
             return;
         }
 
-        float exposure = spotlightSensor != null ? spotlightSensor.Exposure01 : 0f;
-        float glow = Mathf.Clamp01(exposure);
-        bool shouldShow = glow > visibleExposureThreshold;
-
-        cachedRenderer.enabled = shouldShow;
-        cachedTextMesh.color = Color.Lerp(hiddenTextColor, litTextColor, glow);
+        cachedRenderer.enabled = true;
+        cachedTextMesh.color = litTextColor;
     }
 
     private void RemoveLegacyChildren()

@@ -9,7 +9,7 @@ public class StageLightCodeLockPuzzle : MonoBehaviour
     [SerializeField] private string targetCode = "834";
     [SerializeField] private Vector3 openLocalOffset = new Vector3(0f, 4.4f, 0f);
     [SerializeField] private float openSpeed = 2.2f;
-    [SerializeField] private Color lockedFormulaColor = new Color(0.55f, 0.9f, 1f, 1f);
+    [SerializeField] private Color lockedFormulaColor = Color.white;
     [SerializeField] private Color unlockedFormulaColor = new Color(1f, 0.86f, 0.3f, 1f);
 
     public bool IsSolved { get; private set; }
@@ -48,6 +48,8 @@ public class StageLightCodeLockPuzzle : MonoBehaviour
         doorTransform = doorReference;
         formulaText = formulaTextReference;
         targetCode = code;
+        lockedFormulaColor = Color.white;
+        unlockedFormulaColor = new Color(1f, 0.86f, 0.3f, 1f);
         IsSolved = false;
 
         if (doorTransform != null)

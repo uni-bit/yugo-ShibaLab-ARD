@@ -8,12 +8,14 @@ public static class StageSequenceDebugBuilder
 {
     private const string StageContainerName = "Stage Setup";
     private const string LegacyDebugStageContainerName = "Debug Stage Setup";
+    private const string BuiltInFontName = "LegacyRuntime.ttf";
     private static readonly string[] LegacyGeneratedRootNames =
     {
         "Stage1 Debug Root",
         "Stage2 Debug Root",
         "Stage3 Debug Root"
     };
+    private static Font builtInFont;
  
     public static GameObject[] EnsureStageSetup(Transform parent, GameObject[] existingStageRoots = null)
     {
@@ -170,6 +172,7 @@ public static class StageSequenceDebugBuilder
     {
         EnsureGround(root, "Stage2 Ground", new Vector3(0f, -0.55f, 8f), new Vector3(10f, 0.2f, 8f), new Color(0.12f, 0.12f, 0.2f, 1f));
         RemoveGeneratedStage2Label(root);
+        RemoveGeneratedStage2CompleteMarker(root);
 
         StageSymbolNumberRevealPuzzle puzzle = root.GetComponent<StageSymbolNumberRevealPuzzle>();
         if (puzzle == null)
@@ -206,113 +209,313 @@ public static class StageSequenceDebugBuilder
             revealTargets[index] = revealTarget;
         }
 
-        GameObject completeMarker = EnsurePrimitive(root, "Stage2 Complete Marker", PrimitiveType.Sphere, new Vector3(0f, 0.75f, 11.2f), Vector3.one * 0.9f);
-        SetRendererColor(completeMarker, new Color(1f, 0.8f, 0.2f, 1f));
-        completeMarker.SetActive(false);
-        EnsureLabel(completeMarker.transform, "Solved Text", "All Numbers Found", new Vector3(0f, 1.1f, 0f), 0.18f);
-        puzzle.Configure(revealTargets, new[] { completeMarker }, new GameObject[0]);
+        EnsureStage2CodeLock(root);
+        puzzle.Configure(revealTargets, new GameObject[0], new GameObject[0]);
     }
 
     private static void EnsureStage3(Transform root)
     {
-        if (root.childCount > 0)
+        RemoveGeneratedStage3Content(root);
+    }
+
+    private static void RemoveGeneratedStage3Content(Transform root)
+    {
+        string[] generatedChildNames =
+        {
+            "Stage3 Ground",
+            "Stage3 Label",
+            "Code Lock Panel",
+            "Code Lock Content",
+            "Lock Door"
+        };
+
+        for (int index = 0; index < generatedChildNames.Length; index++)
+        {
+            Transform child = root.Find(generatedChildNames[index]);
+            if (child == null)
+            {
+                continue;
+            }
+
+            if (Application.isPlaying)
+            {
+                Object.Destroy(child.gameObject);
+            }
+            else
+            {
+                Object.DestroyImmediate(child.gameObject);
+            }
+        }
+
+        StageLightCodeLockPuzzle codeLockPuzzle = root.GetComponent<StageLightCodeLockPuzzle>();
+        if (codeLockPuzzle != null)
+        {
+            if (Application.isPlaying)
+            {
+                Object.Destroy(codeLockPuzzle);
+            }
+            else
+            {
+                Object.DestroyImmediate(codeLockPuzzle);
+            }
+        }
+
+        StageLightCodeDialColumn[] columns = root.GetComponentsInChildren<StageLightCodeDialColumn>(true);
+        for (int index = 0; index < columns.Length; index++)
+        {
+            if (columns[index] == null)
+            {
+                continue;
+            }
+
+            if (Application.isPlaying)
+            {
+                Object.Destroy(columns[index]);
+            }
+            else
+            {
+                Object.DestroyImmediate(columns[index]);
+            }
+        }
+    }
+
+    private static void RemoveGeneratedStage2CompleteMarker(Transform root)
+    {
+        Transform completeMarker = root.Find("Stage2 Complete Marker");
+        if (completeMarker == null)
         {
             return;
         }
 
-        CreateGround(root, "Stage3 Ground", new Vector3(0f, -0.55f, 8f), new Vector3(10f, 0.2f, 8f), new Color(0.14f, 0.1f, 0.12f, 1f));
-        CreateLabel(root, "Stage3 Label", "Stage 3\nLight-driven code lock", new Vector3(0f, 2.4f, 5.8f), 0.32f);
+        if (Application.isPlaying)
+        {
+            Object.Destroy(completeMarker.gameObject);
+        }
+        else
+        {
+            Object.DestroyImmediate(completeMarker.gameObject);
+        }
+    }
 
-        GameObject panel = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        panel.name = "Code Lock Panel";
-        panel.transform.SetParent(root, false);
-        panel.transform.localPosition = new Vector3(0f, 1.1f, 8f);
-        panel.transform.localScale = new Vector3(6.8f, 4.8f, 0.5f);
+    private static void EnsureStage2CodeLock(Transform root)
+    {
+        RemoveLegacyRootLevelCodeLockObjects(root);
+        Transform rigRoot = FindOrCreateChildIfMissing(root, "Code Lock Rig", Vector3.zero);
+        bool panelExists = rigRoot.Find("Code Lock Panel") != null;
+        GameObject panel = EnsurePrimitive(rigRoot, "Code Lock Panel", PrimitiveType.Cube, new Vector3(0f, 1.1f, 8f), new Vector3(6.8f, 4.8f, 0.5f));
+        if (!panelExists)
+        {
+            panel.transform.localPosition = new Vector3(0f, 1.1f, 8f);
+            panel.transform.localRotation = Quaternion.identity;
+            panel.transform.localScale = new Vector3(6.8f, 4.8f, 0.5f);
+        }
         SetRendererColor(panel, new Color(0.18f, 0.16f, 0.12f, 1f));
+        RemoveLegacyCodeLockPanelChildren(panel.transform);
 
-        GameObject topTextRoot = new GameObject("Top Formula Root");
-        topTextRoot.transform.SetParent(panel.transform, false);
-        topTextRoot.transform.localPosition = new Vector3(0f, 1.55f, -0.34f);
-        topTextRoot.AddComponent<FaceCameraBillboard>();
-        TextMesh topFormula = CreateLabel(topTextRoot.transform, "Formula Label", "○△□ = ???", Vector3.zero, 0.26f).GetComponent<TextMesh>();
+        Transform contentRoot = FindOrCreateChildIfMissing(rigRoot, "Code Lock Content", new Vector3(0f, 1.1f, 7.72f));
+
+        Transform topTextRoot = FindOrCreateChildIfMissing(contentRoot, "Top Formula Root", new Vector3(-0.55f, 1.55f, 0f));
+        topTextRoot.localPosition = new Vector3(-0.55f, 1.55f, 0f);
+        topTextRoot.localRotation = Quaternion.identity;
+        RemoveLegacyFormulaContent(topTextRoot);
+        RemoveComponentIfExists<FaceCameraBillboard>(topTextRoot.gameObject);
+        SpotlightSensor formulaSensor = EnsureSensor(topTextRoot.gameObject, topTextRoot, null, null);
+        TextMesh topFormula = EnsureLabel(topTextRoot, "Formula State Driver", "○△□ = ???", Vector3.zero, 0.08f).GetComponent<TextMesh>();
         if (topFormula != null)
         {
-            topFormula.fontSize = 88;
-            topFormula.color = new Color(0.55f, 0.9f, 1f, 1f);
+            ApplyBuiltInFont(topFormula);
+            topFormula.fontSize = 160;
+            topFormula.color = Color.white;
+            MeshRenderer formulaRenderer = topFormula.GetComponent<MeshRenderer>();
+            if (formulaRenderer != null)
+            {
+                formulaRenderer.enabled = false;
+            }
         }
 
-        StageLightCodeLockPuzzle codeLockPuzzle = root.gameObject.AddComponent<StageLightCodeLockPuzzle>();
-        StageLightCodeDialColumn[] columns = new StageLightCodeDialColumn[3];
+        StageCodeFormulaDisplay formulaDisplay = topTextRoot.GetComponent<StageCodeFormulaDisplay>();
+        if (formulaDisplay == null)
+        {
+            formulaDisplay = topTextRoot.gameObject.AddComponent<StageCodeFormulaDisplay>();
+        }
+        formulaDisplay.Configure(topFormula, formulaSensor);
 
+        StageLightCodeLockPuzzle codeLockPuzzle = root.GetComponent<StageLightCodeLockPuzzle>();
+        if (codeLockPuzzle == null)
+        {
+            codeLockPuzzle = root.gameObject.AddComponent<StageLightCodeLockPuzzle>();
+        }
+
+        StageCodeLockRig rig = rigRoot.GetComponent<StageCodeLockRig>();
+        if (rig == null)
+        {
+            rig = rigRoot.gameObject.AddComponent<StageCodeLockRig>();
+        }
+
+        StageLightCodeDialColumn[] columns = new StageLightCodeDialColumn[3];
+        Transform[] columnRoots = new Transform[3];
         for (int index = 0; index < columns.Length; index++)
         {
-            float x = -1.9f + (index * 1.9f);
-            GameObject columnRoot = new GameObject("Dial Column " + (index + 1));
-            columnRoot.transform.SetParent(panel.transform, false);
-            columnRoot.transform.localPosition = new Vector3(x, -0.3f, -0.34f);
+            float x = -1.8f + (index * 1.8f);
+            Transform columnRoot = FindOrCreateChildIfMissing(contentRoot, "Dial Column " + (index + 1), new Vector3(x, -0.15f, 0f));
+            columnRoots[index] = columnRoot;
 
-            GameObject upButton = CreateButton(columnRoot.transform, "Up Button", new Vector3(0f, 1.0f, 0f), "▲");
-            GameObject display = CreateDisplay(columnRoot.transform, "Digit Display", new Vector3(0f, 0f, 0f), "0");
-            GameObject downButton = CreateButton(columnRoot.transform, "Down Button", new Vector3(0f, -1.0f, 0f), "▼");
+            GameObject upButton = EnsureCodeLockButton(columnRoot, "Up Button", new Vector3(0f, 0.95f, 0f), "▲");
+            GameObject display = EnsureCodeLockDisplay(columnRoot, "Digit Display", new Vector3(0f, 0f, 0f), "0");
+            GameObject downButton = EnsureCodeLockButton(columnRoot, "Down Button", new Vector3(0f, -0.95f, 0f), "▼");
 
-            SpotlightSensor upSensor = upButton.AddComponent<SpotlightSensor>();
-            upSensor.Configure(null, null, upButton.transform, upButton.GetComponent<Renderer>(), upButton.GetComponent<Collider>());
+            SpotlightSensor upSensor = EnsureSensor(upButton, upButton.transform, upButton.GetComponent<Renderer>(), upButton.GetComponent<Collider>());
+            SpotlightSensor downSensor = EnsureSensor(downButton, downButton.transform, downButton.GetComponent<Renderer>(), downButton.GetComponent<Collider>());
 
-            SpotlightSensor downSensor = downButton.AddComponent<SpotlightSensor>();
-            downSensor.Configure(null, null, downButton.transform, downButton.GetComponent<Renderer>(), downButton.GetComponent<Collider>());
+            StageLightCodeDialColumn column = columnRoot.GetComponent<StageLightCodeDialColumn>();
+            if (column == null)
+            {
+                column = columnRoot.gameObject.AddComponent<StageLightCodeDialColumn>();
+            }
 
-            StageLightCodeDialColumn column = columnRoot.AddComponent<StageLightCodeDialColumn>();
-            column.Configure(display.GetComponent<TextMesh>(), upSensor, downSensor, 0);
+            column.Configure(display.GetComponent<TextMesh>(), upSensor, downSensor, rig, 0);
             columns[index] = column;
         }
 
-        GameObject door = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        door.name = "Lock Door";
-        door.transform.SetParent(panel.transform, false);
-        door.transform.localPosition = new Vector3(0f, 0f, -0.29f);
-        door.transform.localScale = new Vector3(6.1f, 4.1f, 0.08f);
+        bool doorExists = rigRoot.Find("Lock Door") != null;
+        GameObject door = EnsurePrimitive(rigRoot, "Lock Door", PrimitiveType.Cube, new Vector3(0f, 1.1f, 7.88f), new Vector3(5.8f, 3.8f, 0.08f));
+        if (!doorExists)
+        {
+            door.transform.localPosition = new Vector3(0f, 1.1f, 7.88f);
+            door.transform.localRotation = Quaternion.identity;
+            door.transform.localScale = new Vector3(5.8f, 3.8f, 0.08f);
+        }
         SetRendererColor(door, new Color(0.08f, 0.09f, 0.1f, 1f));
 
+        rig.Configure(panel.transform, contentRoot, topTextRoot, door.transform, columnRoots);
         codeLockPuzzle.Configure(columns, door.transform, topFormula, "834");
     }
 
-    private static GameObject CreateButton(Transform parent, string name, Vector3 localPosition, string label)
+    private static void RemoveLegacyRootLevelCodeLockObjects(Transform root)
     {
-        GameObject button = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        button.name = name;
-        button.transform.SetParent(parent, false);
-        button.transform.localPosition = localPosition;
-        button.transform.localScale = new Vector3(1.2f, 0.6f, 0.18f);
-        SetRendererColor(button, new Color(0.2f, 0.2f, 0.22f, 1f));
-
-        GameObject textRoot = new GameObject(name + " Text Root");
-        textRoot.transform.SetParent(button.transform, false);
-        textRoot.transform.localPosition = new Vector3(0f, 0f, -0.16f);
-        textRoot.AddComponent<FaceCameraBillboard>();
-        TextMesh text = CreateLabel(textRoot.transform, name + " Label", label, Vector3.zero, 0.22f).GetComponent<TextMesh>();
-        if (text != null)
+        string[] legacyNames =
         {
-            text.fontSize = 84;
-            text.color = new Color(0.5f, 0.9f, 1f, 1f);
+            "Code Lock Panel",
+            "Code Lock Content",
+            "Lock Door"
+        };
+
+        for (int index = 0; index < legacyNames.Length; index++)
+        {
+            Transform child = root.Find(legacyNames[index]);
+            if (child == null)
+            {
+                continue;
+            }
+
+            if (Application.isPlaying)
+            {
+                Object.Destroy(child.gameObject);
+            }
+            else
+            {
+                Object.DestroyImmediate(child.gameObject);
+            }
         }
+    }
+
+    private static Transform FindOrCreateChild(Transform parent, string name, Vector3 localPosition)
+    {
+        Transform child = parent.Find(name);
+        if (child == null)
+        {
+            child = new GameObject(name).transform;
+            child.SetParent(parent, false);
+        }
+
+        child.localPosition = localPosition;
+        child.localRotation = Quaternion.identity;
+        child.localScale = Vector3.one;
+        return child;
+    }
+
+    private static Transform FindOrCreateChildIfMissing(Transform parent, string name, Vector3 localPosition)
+    {
+        Transform child = parent.Find(name);
+        if (child != null)
+        {
+            return child;
+        }
+
+        child = new GameObject(name).transform;
+        child.SetParent(parent, false);
+        child.localPosition = localPosition;
+        child.localRotation = Quaternion.identity;
+        child.localScale = Vector3.one;
+        return child;
+    }
+
+    private static GameObject EnsureCodeLockButton(Transform parent, string name, Vector3 localPosition, string label)
+    {
+        bool buttonExists = parent.Find(name) != null;
+        GameObject button = EnsurePrimitive(parent, name, PrimitiveType.Cube, localPosition, new Vector3(1.05f, 0.42f, 0.12f));
+        if (!buttonExists)
+        {
+            button.transform.localPosition = localPosition;
+            button.transform.localRotation = Quaternion.identity;
+            button.transform.localScale = new Vector3(1.05f, 0.42f, 0.12f);
+        }
+        SetRendererColor(button, new Color(0.2f, 0.2f, 0.22f, 1f));
+        RemoveLegacyButtonVisuals(button.transform, name);
+
+        SpotlightSensor sensor = EnsureSensor(button, button.transform, button.GetComponent<Renderer>(), button.GetComponent<Collider>());
+        LightReactiveRendererFeedback feedback = button.GetComponent<LightReactiveRendererFeedback>();
+        if (feedback != null)
+        {
+            if (Application.isPlaying)
+            {
+                Object.Destroy(feedback);
+            }
+            else
+            {
+                Object.DestroyImmediate(feedback);
+            }
+        }
+
+        EnsureArrowGlyph(parent, name + " Arrow Glyph", localPosition + new Vector3(0f, 0f, -0.16f), label == "▲");
 
         return button;
     }
 
-    private static GameObject CreateDisplay(Transform parent, string name, Vector3 localPosition, string initialText)
+    private static GameObject EnsureCodeLockDisplay(Transform parent, string name, Vector3 localPosition, string initialText)
     {
-        GameObject display = new GameObject(name);
+        Transform existing = parent.Find(name);
+        GameObject display = existing != null ? existing.gameObject : new GameObject(name);
         display.transform.SetParent(parent, false);
-        display.transform.localPosition = localPosition + new Vector3(0f, 0f, -0.16f);
-        display.AddComponent<FaceCameraBillboard>();
+        if (existing == null)
+        {
+            display.transform.localPosition = localPosition + new Vector3(0f, 0f, -0.06f);
+            display.transform.localRotation = Quaternion.identity;
+            display.transform.localScale = Vector3.one;
+        }
+        RemoveComponentIfExists<FaceCameraBillboard>(display);
 
-        TextMesh textMesh = display.AddComponent<TextMesh>();
+        TextMesh textMesh = display.GetComponent<TextMesh>();
+        if (textMesh == null)
+        {
+            textMesh = display.AddComponent<TextMesh>();
+        }
+
+        ApplyBuiltInFont(textMesh);
         textMesh.text = initialText;
-        textMesh.characterSize = 0.34f;
-        textMesh.fontSize = 112;
+        textMesh.characterSize = 0.1f;
+        textMesh.fontSize = 180;
         textMesh.alignment = TextAlignment.Center;
         textMesh.anchor = TextAnchor.MiddleCenter;
-        textMesh.color = new Color(0.45f, 0.95f, 1f, 1f);
+        textMesh.color = Color.white;
+        StageSpotlightMaterialUtility.ApplySpotlitText(textMesh, new Color(1f, 1f, 1f, 0f), Color.white);
+
+        StageLightCodeDigitAnimator animator = display.GetComponent<StageLightCodeDigitAnimator>();
+        if (animator == null)
+        {
+            animator = display.AddComponent<StageLightCodeDigitAnimator>();
+        }
+        animator.SetDigitImmediate(int.TryParse(initialText, out int initialDigit) ? initialDigit : 0);
 
         MeshRenderer renderer = display.GetComponent<MeshRenderer>();
         if (renderer != null)
@@ -418,6 +621,249 @@ public static class StageSequenceDebugBuilder
         }
     }
 
+    private static void RemoveLegacyCodeLockPanelChildren(Transform panel)
+    {
+        for (int index = panel.childCount - 1; index >= 0; index--)
+        {
+            Transform child = panel.GetChild(index);
+            if (child == null)
+            {
+                continue;
+            }
+
+            bool shouldRemove = child.name == "Top Formula Root"
+                || child.name == "Lock Door"
+                || child.name.StartsWith("Dial Column ");
+
+            if (!shouldRemove)
+            {
+                continue;
+            }
+
+            if (Application.isPlaying)
+            {
+                Object.Destroy(child.gameObject);
+            }
+            else
+            {
+                Object.DestroyImmediate(child.gameObject);
+            }
+        }
+    }
+
+    private static void RemoveLegacyFormulaContent(Transform topTextRoot)
+    {
+        for (int index = topTextRoot.childCount - 1; index >= 0; index--)
+        {
+            Transform child = topTextRoot.GetChild(index);
+            if (child == null)
+            {
+                continue;
+            }
+
+            bool keepChild = child.name == "Formula State Driver"
+                || child.name == "Circle Symbol"
+                || child.name == "Triangle Symbol"
+                || child.name == "Square Symbol"
+                || child.name == "Formula Value"
+                || child.name == "Formula Equals"
+                || child.name == "Formula Question";
+
+            if (keepChild)
+            {
+                continue;
+            }
+
+            if (Application.isPlaying)
+            {
+                Object.Destroy(child.gameObject);
+            }
+            else
+            {
+                Object.DestroyImmediate(child.gameObject);
+            }
+        }
+
+        Transform legacyFormula = topTextRoot.Find("Formula Label");
+        if (legacyFormula != null)
+        {
+            if (Application.isPlaying)
+            {
+                Object.Destroy(legacyFormula.gameObject);
+            }
+            else
+            {
+                Object.DestroyImmediate(legacyFormula.gameObject);
+            }
+        }
+    }
+
+    private static SpotlightSensor EnsureSensor(GameObject target, Transform samplePoint, Renderer sampleRenderer, Collider sampleCollider)
+    {
+        SpotlightSensor sensor = target.GetComponent<SpotlightSensor>();
+        if (sensor == null)
+        {
+            sensor = target.AddComponent<SpotlightSensor>();
+        }
+
+        sensor.Configure(null, null, samplePoint, sampleRenderer, sampleCollider);
+        return sensor;
+    }
+
+    private static void EnsureArrowGlyph(Transform parent, string glyphName, Vector3 localPosition, bool pointsUp)
+    {
+        Transform arrowTransform = parent.Find(glyphName);
+        bool wasCreated = arrowTransform == null;
+        if (arrowTransform == null)
+        {
+            arrowTransform = new GameObject(glyphName).transform;
+            arrowTransform.SetParent(parent, false);
+        }
+
+        if (wasCreated)
+        {
+            arrowTransform.localPosition = localPosition;
+            arrowTransform.localRotation = Quaternion.identity;
+            arrowTransform.localScale = Vector3.one;
+        }
+
+        RemoveComponentIfExists<LineRenderer>(arrowTransform.gameObject);
+
+        MeshFilter meshFilter = arrowTransform.GetComponent<MeshFilter>();
+        if (meshFilter == null)
+        {
+            meshFilter = arrowTransform.gameObject.AddComponent<MeshFilter>();
+        }
+
+        MeshRenderer meshRenderer = arrowTransform.GetComponent<MeshRenderer>();
+        if (meshRenderer == null)
+        {
+            meshRenderer = arrowTransform.gameObject.AddComponent<MeshRenderer>();
+        }
+
+        meshRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        meshRenderer.receiveShadows = false;
+
+        Mesh mesh = meshFilter.sharedMesh;
+        if (mesh == null)
+        {
+            mesh = new Mesh();
+            mesh.name = pointsUp ? "Arrow Up Mesh" : "Arrow Down Mesh";
+            meshFilter.sharedMesh = mesh;
+        }
+
+        Vector3[] vertices;
+        if (pointsUp)
+        {
+            vertices = new[]
+            {
+                new Vector3(-0.28f, -0.16f, 0f),
+                new Vector3(0f, 0.18f, 0f),
+                new Vector3(0.28f, -0.16f, 0f),
+            };
+        }
+        else
+        {
+            vertices = new[]
+            {
+                new Vector3(-0.28f, 0.16f, 0f),
+                new Vector3(0f, -0.18f, 0f),
+                new Vector3(0.28f, 0.16f, 0f),
+            };
+        }
+
+        mesh.Clear();
+        mesh.vertices = vertices;
+        mesh.uv = new[]
+        {
+            new Vector2(0f, 0f),
+            new Vector2(0.5f, 1f),
+            new Vector2(1f, 0f),
+        };
+        mesh.triangles = new[] { 0, 1, 2 };
+        mesh.normals = new[] { Vector3.forward, Vector3.forward, Vector3.forward };
+        mesh.bounds = new Bounds(Vector3.zero, new Vector3(0.7f, 0.7f, 0.1f));
+
+        StageSpotlightMaterialUtility.ApplySpotlitRenderer(meshRenderer, new Color(0.45f, 0.8f, 0.9f, 0f), new Color(1f, 0.95f, 0.55f, 1f));
+    }
+
+    private static void RemoveLegacyButtonVisuals(Transform buttonRoot, string buttonName)
+    {
+        if (buttonRoot == null)
+        {
+            return;
+        }
+
+        RemoveChildIfExists(buttonRoot, buttonName + " Text Root");
+        RemoveChildIfExists(buttonRoot, "Arrow Glyph");
+
+        for (int index = buttonRoot.childCount - 1; index >= 0; index--)
+        {
+            Transform child = buttonRoot.GetChild(index);
+            if (child == null)
+            {
+                continue;
+            }
+
+            bool isLegacyLabel = child.name == buttonName + " Label";
+            bool isMisplacedArrow = child.name == "Arrow Glyph" && child.parent != buttonRoot;
+            if (!isLegacyLabel && !isMisplacedArrow)
+            {
+                continue;
+            }
+
+            if (Application.isPlaying)
+            {
+                Object.Destroy(child.gameObject);
+            }
+            else
+            {
+                Object.DestroyImmediate(child.gameObject);
+            }
+        }
+    }
+
+    private static void RemoveComponentIfExists<T>(GameObject target) where T : Component
+    {
+        if (target == null)
+        {
+            return;
+        }
+
+        T component = target.GetComponent<T>();
+        if (component == null)
+        {
+            return;
+        }
+
+        if (Application.isPlaying)
+        {
+            Object.Destroy(component);
+        }
+        else
+        {
+            Object.DestroyImmediate(component);
+        }
+    }
+
+    private static void RemoveChildIfExists(Transform parent, string childName)
+    {
+        Transform child = parent.Find(childName);
+        if (child == null)
+        {
+            return;
+        }
+
+        if (Application.isPlaying)
+        {
+            Object.Destroy(child.gameObject);
+        }
+        else
+        {
+            Object.DestroyImmediate(child.gameObject);
+        }
+    }
+
     private static GameObject EnsurePrimitive(Transform parent, string name, PrimitiveType primitiveType, Vector3 localPosition, Vector3 localScale)
     {
         Transform existing = parent.Find(name);
@@ -470,6 +916,15 @@ public static class StageSequenceDebugBuilder
         SetRendererColor(ground, color);
     }
 
+    private static void EnsureBillboard(GameObject target)
+    {
+        FaceCameraBillboard billboard = target.GetComponent<FaceCameraBillboard>();
+        if (billboard == null)
+        {
+            target.AddComponent<FaceCameraBillboard>();
+        }
+    }
+
     private static GameObject EnsureLabel(Transform parent, string name, string text, Vector3 localPosition, float characterSize)
     {
         Transform existing = parent.Find(name);
@@ -487,6 +942,7 @@ public static class StageSequenceDebugBuilder
         {
             textMesh.text = text;
             textMesh.characterSize = characterSize;
+            ApplyBuiltInFont(textMesh);
         }
 
         return label;
@@ -608,6 +1064,7 @@ public static class StageSequenceDebugBuilder
         textMesh.alignment = TextAlignment.Center;
         textMesh.anchor = TextAnchor.MiddleCenter;
         textMesh.color = Color.white;
+        ApplyBuiltInFont(textMesh);
 
         MeshRenderer renderer = label.GetComponent<MeshRenderer>();
         if (renderer != null)
@@ -617,6 +1074,32 @@ public static class StageSequenceDebugBuilder
         }
 
         return label;
+    }
+
+    private static void ApplyBuiltInFont(TextMesh textMesh)
+    {
+        if (textMesh == null)
+        {
+            return;
+        }
+
+        if (builtInFont == null)
+        {
+            builtInFont = Resources.GetBuiltinResource<Font>(BuiltInFontName);
+        }
+
+        if (builtInFont == null)
+        {
+            return;
+        }
+
+        textMesh.font = builtInFont;
+
+        MeshRenderer renderer = textMesh.GetComponent<MeshRenderer>();
+        if (renderer != null && builtInFont.material != null)
+        {
+            renderer.sharedMaterial = builtInFont.material;
+        }
     }
 
     private static void SetRendererColor(GameObject target, Color color)

@@ -215,6 +215,7 @@ public class StageSequenceController : MonoBehaviour
                 displays[index].RefreshState();
             }
         }
+
     }
 
     private void CreateStageSetupIfNeeded()
@@ -323,7 +324,7 @@ public class StageSequenceController : MonoBehaviour
             return;
         }
 
-        SyncStageSetupIfEnabled();
+        CreateStageSetupIfNeeded();
         ApplyStageVisibility(Mathf.Clamp(startingStageIndex, 0, Mathf.Max(0, stageRoots.Length - 1)));
         EditorUtility.SetDirty(this);
     }

@@ -31,8 +31,10 @@ public class UdpQuaternionReceiver : MonoBehaviour
     [SerializeField] private int listenPort = 8000;
 
     [Header("Coordinate Conversion")]
+    [SerializeField] private QuaternionCoordinatePreset coordinatePreset = QuaternionCoordinatePreset.IPhoneCoreMotion;
     [SerializeField] private bool convertRightHandedToLeftHanded = true;
     [SerializeField] private Vector3 sensorToUnityEulerOffset = Vector3.zero;
+    [SerializeField] private bool stabilizeQuaternionHemisphere = true;
 
     [Header("Touch Input")]
     [SerializeField] private float touchRecenterCooldownSeconds = 0.25f;
@@ -47,6 +49,8 @@ public class UdpQuaternionReceiver : MonoBehaviour
 
     private Quaternion pendingRotation = Quaternion.identity;
     private bool hasPendingRotation;
+    private Quaternion lastNormalizedRawRotation = Quaternion.identity;
+    private bool hasLastNormalizedRawRotation;
     private Vector4 partialQuaternion;
     private bool hasX;
     private bool hasY;
@@ -55,7 +59,9 @@ public class UdpQuaternionReceiver : MonoBehaviour
     private DateTime lastTouchRecenterTime = DateTime.MinValue;
 
     public Quaternion LatestRawRotation { get; private set; } = Quaternion.identity;
+    public Quaternion LatestStabilizedRawRotation { get; private set; } = Quaternion.identity;
     public Quaternion LatestConvertedRotation { get; private set; } = Quaternion.identity;
+    public QuaternionCoordinatePreset CoordinatePreset => coordinatePreset;
     public int ReceivedPacketCount { get; private set; }
     public int RecenterRequestCount { get; private set; }
     public DateTime LastRecenterTime { get; private set; } = DateTime.MinValue;
@@ -92,6 +98,23 @@ public class UdpQuaternionReceiver : MonoBehaviour
             rotation = pendingRotation;
             hasPendingRotation = false;
             return true;
+        }
+    }
+
+    public Quaternion GetLatestConvertedRotationSnapshot()
+    {
+        lock (syncRoot)
+        {
+            return LatestConvertedRotation;
+        }
+    }
+
+    public void ClearPendingRotation()
+    {
+        lock (syncRoot)
+        {
+            hasPendingRotation = false;
+            pendingRotation = LatestConvertedRotation;
         }
     }
 
@@ -205,16 +228,19 @@ public class UdpQuaternionReceiver : MonoBehaviour
                     continue;
                 }
 
-                Quaternion rawQuaternion = parseResult.Quaternion;
+                Quaternion packetQuaternion = parseResult.Quaternion;
+                Quaternion rawQuaternion = StabilizeRawQuaternion(packetQuaternion);
 
-                Quaternion convertedQuaternion = QuaternionCoordinateConverter.ConvertRightHandedYUpToUnity(
+                Quaternion convertedQuaternion = QuaternionCoordinateConverter.ConvertToUnity(
                     rawQuaternion,
+                    coordinatePreset,
                     sensorToUnityEulerOffset,
                     convertRightHandedToLeftHanded);
 
                 lock (syncRoot)
                 {
-                    LatestRawRotation = rawQuaternion;
+                    LatestRawRotation = packetQuaternion;
+                    LatestStabilizedRawRotation = rawQuaternion;
                     LatestConvertedRotation = convertedQuaternion;
                     pendingRotation = convertedQuaternion;
                     hasPendingRotation = true;
@@ -416,6 +442,44 @@ public class UdpQuaternionReceiver : MonoBehaviour
             Quaternion = quaternion,
             Message = message
         };
+    }
+
+    private Quaternion StabilizeRawQuaternion(Quaternion quaternion)
+    {
+        float magnitude = Mathf.Sqrt(
+            quaternion.x * quaternion.x
+            + quaternion.y * quaternion.y
+            + quaternion.z * quaternion.z
+            + quaternion.w * quaternion.w);
+
+        if (magnitude <= 0.000001f)
+        {
+            return Quaternion.identity;
+        }
+
+        float inverseMagnitude = 1f / magnitude;
+        Quaternion normalized = new Quaternion(
+            quaternion.x * inverseMagnitude,
+            quaternion.y * inverseMagnitude,
+            quaternion.z * inverseMagnitude,
+            quaternion.w * inverseMagnitude);
+
+        if (stabilizeQuaternionHemisphere && hasLastNormalizedRawRotation)
+        {
+            float dot = (normalized.x * lastNormalizedRawRotation.x)
+                + (normalized.y * lastNormalizedRawRotation.y)
+                + (normalized.z * lastNormalizedRawRotation.z)
+                + (normalized.w * lastNormalizedRawRotation.w);
+
+            if (dot < 0f)
+            {
+                normalized = new Quaternion(-normalized.x, -normalized.y, -normalized.z, -normalized.w);
+            }
+        }
+
+        lastNormalizedRawRotation = normalized;
+        hasLastNormalizedRawRotation = true;
+        return normalized;
     }
 
     private static bool TryParseTextQuaternion(byte[] data, out Quaternion quaternion)

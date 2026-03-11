@@ -36,6 +36,12 @@ public class PoseTestBootstrap : MonoBehaviour
     }
 
     private readonly System.Collections.Generic.List<SceneLightState> managedSceneLights = new System.Collections.Generic.List<SceneLightState>();
+    private static readonly int StageSpotlightPositionId = Shader.PropertyToID("_StageSpotlightPosition");
+    private static readonly int StageSpotlightDirectionId = Shader.PropertyToID("_StageSpotlightDirection");
+    private static readonly int StageSpotlightRangeId = Shader.PropertyToID("_StageSpotlightRange");
+    private static readonly int StageSpotlightCosOuterId = Shader.PropertyToID("_StageSpotlightCosOuter");
+    private static readonly int StageSpotlightCosInnerId = Shader.PropertyToID("_StageSpotlightCosInner");
+    private static readonly int StageSpotlightEnabledId = Shader.PropertyToID("_StageSpotlightEnabled");
 
     public Light ActiveSpotLight { get; private set; }
 
@@ -63,6 +69,7 @@ public class PoseTestBootstrap : MonoBehaviour
         }
 
         ActiveSpotLight = null;
+        ClearSpotlightShaderGlobals();
     }
 
     private void OnDestroy()
@@ -91,6 +98,11 @@ public class PoseTestBootstrap : MonoBehaviour
         }
 
         BuildDemo();
+    }
+
+    private void Update()
+    {
+        UpdateSpotlightShaderGlobals();
     }
 
     [ContextMenu("Build Demo")]
@@ -209,6 +221,7 @@ public class PoseTestBootstrap : MonoBehaviour
         tipLight.intensity = 16f;
         tipLight.color = Color.white;
         ActiveSpotLight = tipLight;
+        UpdateSpotlightShaderGlobals();
 
         ApplySpotlightOnlyLighting(tipLight, Application.isPlaying);
 
@@ -257,6 +270,7 @@ public class PoseTestBootstrap : MonoBehaviour
     private void ClearExistingRig()
     {
         ActiveSpotLight = null;
+        ClearSpotlightShaderGlobals();
 
         for (int index = transform.childCount - 1; index >= 0; index--)
         {
@@ -447,5 +461,34 @@ public class PoseTestBootstrap : MonoBehaviour
         }
 
         return component;
+    }
+
+    private void UpdateSpotlightShaderGlobals()
+    {
+        if (ActiveSpotLight == null || !ActiveSpotLight.enabled || ActiveSpotLight.type != LightType.Spot)
+        {
+            ClearSpotlightShaderGlobals();
+            return;
+        }
+
+        float halfAngleRadians = ActiveSpotLight.spotAngle * 0.5f * Mathf.Deg2Rad;
+        float innerAngleRadians = halfAngleRadians * 0.82f;
+
+        Shader.SetGlobalVector(StageSpotlightPositionId, ActiveSpotLight.transform.position);
+        Shader.SetGlobalVector(StageSpotlightDirectionId, ActiveSpotLight.transform.forward);
+        Shader.SetGlobalFloat(StageSpotlightRangeId, ActiveSpotLight.range);
+        Shader.SetGlobalFloat(StageSpotlightCosOuterId, Mathf.Cos(halfAngleRadians));
+        Shader.SetGlobalFloat(StageSpotlightCosInnerId, Mathf.Cos(innerAngleRadians));
+        Shader.SetGlobalFloat(StageSpotlightEnabledId, 1f);
+    }
+
+    private static void ClearSpotlightShaderGlobals()
+    {
+        Shader.SetGlobalVector(StageSpotlightPositionId, Vector4.zero);
+        Shader.SetGlobalVector(StageSpotlightDirectionId, Vector3.forward);
+        Shader.SetGlobalFloat(StageSpotlightRangeId, 0f);
+        Shader.SetGlobalFloat(StageSpotlightCosOuterId, -1f);
+        Shader.SetGlobalFloat(StageSpotlightCosInnerId, -1f);
+        Shader.SetGlobalFloat(StageSpotlightEnabledId, 0f);
     }
 }

@@ -58,7 +58,9 @@ public class PoseDebugOverlay : MonoBehaviour
         string lastStatus = receiver != null ? receiver.LastStatus : "Receiver missing";
         string lastSender = receiver != null ? receiver.LastSender : "-";
         int packets = receiver != null ? receiver.ReceivedPacketCount : 0;
+        string coordinatePreset = receiver != null ? receiver.CoordinatePreset.ToString() : "-";
         Quaternion raw = receiver != null ? receiver.LatestRawRotation : Quaternion.identity;
+        Quaternion stabilizedRaw = receiver != null ? receiver.LatestStabilizedRawRotation : Quaternion.identity;
         Quaternion converted = receiver != null ? receiver.LatestConvertedRotation : Quaternion.identity;
         Quaternion applied = driver != null ? driver.LatestAppliedRotation : Quaternion.identity;
         string sinceLastPacket = "-";
@@ -76,7 +78,9 @@ public class PoseDebugOverlay : MonoBehaviour
         GUILayout.Label("Status: " + lastStatus);
         GUILayout.Label("Sender: " + lastSender);
         GUILayout.Label("Packets: " + packets.ToString(CultureInfo.InvariantCulture));
-        GUILayout.Label("Raw Quaternion: " + raw.ToString("F4"));
+        GUILayout.Label("Coordinate Preset: " + coordinatePreset);
+        GUILayout.Label("Packet Raw Quaternion: " + raw.ToString("F4"));
+        GUILayout.Label("Stabilized Raw Quaternion: " + stabilizedRaw.ToString("F4"));
         GUILayout.Label("Converted Quaternion: " + converted.ToString("F4"));
         GUILayout.Label("Applied Quaternion: " + applied.ToString("F4"));
         GUILayout.Label("Applied Euler: " + applied.eulerAngles.ToString("F1"));

@@ -1,8 +1,41 @@
 using UnityEngine;
 
+public enum QuaternionCoordinatePreset
+{
+    IPhoneCoreMotion = 0,
+    AndroidRotationVector = 1
+}
+
+public enum QuaternionComponentSource
+{
+    X = 0,
+    Y = 1,
+    Z = 2,
+    W = 3
+}
+
 public static class QuaternionCoordinateConverter
 {
-    public static Quaternion ConvertRightHandedYUpToUnity(Quaternion sensorQuaternion, Vector3 eulerOffset, bool convertHandedness = true)
+    public static Quaternion RemapRawQuaternion(
+        Quaternion sensorQuaternion,
+        QuaternionComponentSource xSource,
+        QuaternionComponentSource ySource,
+        QuaternionComponentSource zSource,
+        QuaternionComponentSource wSource,
+        Vector4 signMultiplier)
+    {
+        return new Quaternion(
+            ReadComponent(sensorQuaternion, xSource) * signMultiplier.x,
+            ReadComponent(sensorQuaternion, ySource) * signMultiplier.y,
+            ReadComponent(sensorQuaternion, zSource) * signMultiplier.z,
+            ReadComponent(sensorQuaternion, wSource) * signMultiplier.w);
+    }
+
+    public static Quaternion ConvertToUnity(
+        Quaternion sensorQuaternion,
+        QuaternionCoordinatePreset coordinatePreset,
+        Vector3 eulerOffset,
+        bool convertHandedness = true)
     {
         Quaternion normalizedSensor = NormalizeQuaternion(sensorQuaternion);
 
@@ -15,29 +48,44 @@ public static class QuaternionCoordinateConverter
                 -normalizedSensor.w);
         }
 
-        // Core Motion on iPhone uses device axes based on the handset body:
-        // +X = right edge of the screen, +Y = top edge of the screen,
-        // +Z = out of the screen toward the user.
-        // This remaps that attitude so the projector rig uses:
-        // +Z = phone top direction, +Y = screen normal, +X = phone right.
-        Vector3 deviceRight = RotateVector(normalizedSensor, Vector3.right);
-        Vector3 deviceTop = RotateVector(normalizedSensor, Vector3.up);
-        Vector3 deviceScreenOut = RotateVector(normalizedSensor, Vector3.forward);
+        Quaternion unityRotation = coordinatePreset == QuaternionCoordinatePreset.IPhoneCoreMotion
+            ? ConvertIPhoneCoreMotion(normalizedSensor, convertHandedness)
+            : (convertHandedness ? ConvertHandedness(normalizedSensor, coordinatePreset) : normalizedSensor);
 
-        if (deviceTop.sqrMagnitude <= 0.000001f || deviceScreenOut.sqrMagnitude <= 0.000001f)
+        if (unityRotation.x == 0f
+            && unityRotation.y == 0f
+            && unityRotation.z == 0f
+            && unityRotation.w == 0f)
         {
             return Quaternion.identity;
         }
 
-        Quaternion unityRotation = Quaternion.LookRotation(deviceTop.normalized, deviceScreenOut.normalized);
-
-        if (!convertHandedness)
-        {
-            unityRotation = Quaternion.Inverse(unityRotation);
-        }
-
         Quaternion offsetRotation = Quaternion.Euler(eulerOffset);
         return Quaternion.Normalize(offsetRotation * unityRotation);
+    }
+
+    public static Quaternion ApplyRelativeAxisPreset(Quaternion relativeRotation, QuaternionCoordinatePreset coordinatePreset, Vector3 iPhoneAxisSigns, Vector3 androidAxisSigns)
+    {
+        Vector3 euler = ToSignedEuler(relativeRotation);
+        Vector3 axisSigns = coordinatePreset == QuaternionCoordinatePreset.AndroidRotationVector
+            ? androidAxisSigns
+            : iPhoneAxisSigns;
+
+        euler = new Vector3(
+            euler.x * Mathf.Sign(Mathf.Approximately(axisSigns.x, 0f) ? 1f : axisSigns.x),
+            euler.y * Mathf.Sign(Mathf.Approximately(axisSigns.y, 0f) ? 1f : axisSigns.y),
+            euler.z * Mathf.Sign(Mathf.Approximately(axisSigns.z, 0f) ? 1f : axisSigns.z));
+
+        return Quaternion.Euler(euler);
+    }
+
+    public static Quaternion ConvertRightHandedYUpToUnity(Quaternion sensorQuaternion, Vector3 eulerOffset, bool convertHandedness = true)
+    {
+        return ConvertToUnity(
+            sensorQuaternion,
+            QuaternionCoordinatePreset.IPhoneCoreMotion,
+            eulerOffset,
+            convertHandedness);
     }
 
     private static Quaternion NormalizeQuaternion(Quaternion quaternion)
@@ -59,6 +107,68 @@ public static class QuaternionCoordinateConverter
             quaternion.y * inverseMagnitude,
             quaternion.z * inverseMagnitude,
             quaternion.w * inverseMagnitude);
+    }
+
+    private static Quaternion ConvertHandedness(Quaternion sensorQuaternion, QuaternionCoordinatePreset coordinatePreset)
+    {
+        switch (coordinatePreset)
+        {
+            case QuaternionCoordinatePreset.AndroidRotationVector:
+                return new Quaternion(sensorQuaternion.x, sensorQuaternion.y, -sensorQuaternion.z, -sensorQuaternion.w);
+
+            case QuaternionCoordinatePreset.IPhoneCoreMotion:
+            default:
+                return new Quaternion(sensorQuaternion.x, sensorQuaternion.y, -sensorQuaternion.z, -sensorQuaternion.w);
+        }
+    }
+
+    private static Quaternion ConvertIPhoneCoreMotion(Quaternion sensorQuaternion, bool convertHandedness)
+    {
+        if (!convertHandedness)
+        {
+            return sensorQuaternion;
+        }
+
+        Vector3 deviceRight = RotateVector(sensorQuaternion, Vector3.right);
+        Vector3 deviceTop = RotateVector(sensorQuaternion, Vector3.up);
+        Vector3 deviceScreenOut = RotateVector(sensorQuaternion, Vector3.forward);
+
+        if (deviceTop.sqrMagnitude <= 0.000001f || deviceScreenOut.sqrMagnitude <= 0.000001f)
+        {
+            return Quaternion.identity;
+        }
+
+        // Core Motion device axes:
+        // +X = screen right, +Y = screen top, +Z = out of the screen.
+        // The rig expects +Z to point along the handset top direction so roll
+        // becomes a twist around the ray instead of lateral spotlight motion.
+        return Quaternion.LookRotation(deviceTop.normalized, -deviceScreenOut.normalized);
+    }
+
+    private static Vector3 ToSignedEuler(Quaternion rotation)
+    {
+        Vector3 euler = rotation.eulerAngles;
+        return new Vector3(
+            Mathf.DeltaAngle(0f, euler.x),
+            Mathf.DeltaAngle(0f, euler.y),
+            Mathf.DeltaAngle(0f, euler.z));
+    }
+
+    private static float ReadComponent(Quaternion quaternion, QuaternionComponentSource componentSource)
+    {
+        switch (componentSource)
+        {
+            case QuaternionComponentSource.X:
+                return quaternion.x;
+            case QuaternionComponentSource.Y:
+                return quaternion.y;
+            case QuaternionComponentSource.Z:
+                return quaternion.z;
+            case QuaternionComponentSource.W:
+                return quaternion.w;
+            default:
+                return 0f;
+        }
     }
 
     private static Vector3 RotateVector(Quaternion quaternion, Vector3 vector)
