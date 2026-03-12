@@ -7,9 +7,13 @@ public class StageCodeFormulaDisplay : MonoBehaviour
     [SerializeField] private TextMesh colorSourceText;
     [SerializeField] private float strokeWidth = 0.045f;
     [SerializeField] private float layoutOffsetX = -0.3f;
+    [SerializeField] private float symbolScale = 1.3f;
     [SerializeField] private Color fallbackColor = Color.white;
     [SerializeField] private Color hiddenColor = new Color(1f, 1f, 1f, 0f);
     [SerializeField] private bool layoutInitialized;
+    [SerializeField] private bool useOverrideColors;
+    [SerializeField] private Color overrideLitColor = Color.white;
+    [SerializeField] private Color overrideHiddenColor = new Color(1f, 1f, 1f, 0f);
 
     private const string CircleName = "Circle Symbol";
     private const string TriangleName = "Triangle Symbol";
@@ -49,11 +53,6 @@ public class StageCodeFormulaDisplay : MonoBehaviour
         RefreshState();
     }
 
-    private void Update()
-    {
-        RefreshState();
-    }
-
     public void Configure(TextMesh colorReference, SpotlightSensor sensorReference)
     {
         colorSourceText = colorReference;
@@ -66,22 +65,39 @@ public class StageCodeFormulaDisplay : MonoBehaviour
     public void RefreshState()
     {
         EnsureVisuals();
-        Color displayColor = colorSourceText != null ? colorSourceText.color : fallbackColor;
-        StageSpotlightMaterialUtility.ApplySpotlitLine(circleRenderer, hiddenColor, displayColor);
-        StageSpotlightMaterialUtility.ApplySpotlitLine(triangleRenderer, hiddenColor, displayColor);
-        StageSpotlightMaterialUtility.ApplySpotlitLine(squareRenderer, hiddenColor, displayColor);
+        Color displayColor = useOverrideColors
+            ? overrideLitColor
+            : colorSourceText != null ? colorSourceText.color : fallbackColor;
+        Color hiddenDisplayColor = useOverrideColors ? overrideHiddenColor : hiddenColor;
+        StageSpotlightMaterialUtility.ApplySpotlitLine(circleRenderer, hiddenDisplayColor, displayColor);
+        StageSpotlightMaterialUtility.ApplySpotlitLine(triangleRenderer, hiddenDisplayColor, displayColor);
+        StageSpotlightMaterialUtility.ApplySpotlitLine(squareRenderer, hiddenDisplayColor, displayColor);
 
         if (equalsText != null)
         {
             equalsText.color = displayColor;
-            StageSpotlightMaterialUtility.ApplySpotlitText(equalsText, hiddenColor, displayColor);
+            StageSpotlightMaterialUtility.ApplySpotlitText(equalsText, hiddenDisplayColor, displayColor);
         }
 
         if (questionText != null)
         {
             questionText.color = displayColor;
-            StageSpotlightMaterialUtility.ApplySpotlitText(questionText, hiddenColor, displayColor);
+            StageSpotlightMaterialUtility.ApplySpotlitText(questionText, hiddenDisplayColor, displayColor);
         }
+    }
+
+    public void SetDisplayColorOverride(Color litColor, Color hiddenColorOverride)
+    {
+        useOverrideColors = true;
+        overrideLitColor = litColor;
+        overrideHiddenColor = hiddenColorOverride;
+        RefreshState();
+    }
+
+    public void ClearDisplayColorOverride()
+    {
+        useOverrideColors = false;
+        RefreshState();
     }
 
     private void EnsureVisuals()
@@ -98,11 +114,11 @@ public class StageCodeFormulaDisplay : MonoBehaviour
         equalsText = EnsureFormulaText(EqualsName, out createdEquals);
         questionText = EnsureFormulaText(QuestionName, out createdQuestion);
 
-        ConfigureCircle(circleRenderer, new Vector3(-1.72f, 0f, 0f));
-        ConfigureTriangle(triangleRenderer, new Vector3(-0.92f, -0.01f, 0f));
-        ConfigureSquare(squareRenderer, new Vector3(-0.12f, 0f, 0f));
-        ConfigureFormulaText(equalsText, "=", ApplyLayoutOffset(new Vector3(0.78f, 0f, 0f)), 0.09f, 180);
-        ConfigureFormulaText(questionText, "???", ApplyLayoutOffset(new Vector3(1.92f, 0f, 0f)), 0.09f, 180);
+        ConfigureCircle(circleRenderer, new Vector3(-2.1f, 0f, 0f));
+        ConfigureTriangle(triangleRenderer, new Vector3(-1.08f, -0.01f, 0f));
+        ConfigureSquare(squareRenderer, new Vector3(-0.04f, 0f, 0f));
+        ConfigureFormulaText(equalsText, "=", ApplyLayoutOffset(new Vector3(1.24f, 0f, 0f)), 0.09f, 180);
+        ConfigureFormulaText(questionText, "???", ApplyLayoutOffset(new Vector3(2.46f, 0f, 0f)), 0.09f, 180);
 
         layoutInitialized = true;
 
@@ -188,7 +204,7 @@ public class StageCodeFormulaDisplay : MonoBehaviour
         renderer.transform.localPosition = ApplyLayoutOffset(localPosition);
         renderer.loop = false;
         renderer.positionCount = 41;
-        float radius = 0.27f;
+        float radius = 0.27f * symbolScale;
         for (int index = 0; index < renderer.positionCount - 1; index++)
         {
             float angle = ((float)index / (renderer.positionCount - 1)) * Mathf.PI * 2f;
@@ -208,10 +224,10 @@ public class StageCodeFormulaDisplay : MonoBehaviour
         renderer.transform.localPosition = ApplyLayoutOffset(localPosition);
         renderer.loop = false;
         renderer.positionCount = 4;
-        renderer.SetPosition(0, new Vector3(0f, 0.3f, 0f));
-        renderer.SetPosition(1, new Vector3(-0.28f, -0.22f, 0f));
-        renderer.SetPosition(2, new Vector3(0.28f, -0.22f, 0f));
-        renderer.SetPosition(3, new Vector3(0f, 0.3f, 0f));
+        renderer.SetPosition(0, new Vector3(0f, 0.3f, 0f) * symbolScale);
+        renderer.SetPosition(1, new Vector3(-0.28f, -0.22f, 0f) * symbolScale);
+        renderer.SetPosition(2, new Vector3(0.28f, -0.22f, 0f) * symbolScale);
+        renderer.SetPosition(3, new Vector3(0f, 0.3f, 0f) * symbolScale);
     }
 
     private void ConfigureSquare(LineRenderer renderer, Vector3 localPosition)
@@ -224,11 +240,11 @@ public class StageCodeFormulaDisplay : MonoBehaviour
         renderer.transform.localPosition = ApplyLayoutOffset(localPosition);
         renderer.loop = false;
         renderer.positionCount = 5;
-        renderer.SetPosition(0, new Vector3(-0.24f, 0.24f, 0f));
-        renderer.SetPosition(1, new Vector3(-0.24f, -0.24f, 0f));
-        renderer.SetPosition(2, new Vector3(0.24f, -0.24f, 0f));
-        renderer.SetPosition(3, new Vector3(0.24f, 0.24f, 0f));
-        renderer.SetPosition(4, new Vector3(-0.24f, 0.24f, 0f));
+        renderer.SetPosition(0, new Vector3(-0.24f, 0.24f, 0f) * symbolScale);
+        renderer.SetPosition(1, new Vector3(-0.24f, -0.24f, 0f) * symbolScale);
+        renderer.SetPosition(2, new Vector3(0.24f, -0.24f, 0f) * symbolScale);
+        renderer.SetPosition(3, new Vector3(0.24f, 0.24f, 0f) * symbolScale);
+        renderer.SetPosition(4, new Vector3(-0.24f, 0.24f, 0f) * symbolScale);
     }
 
     private static void ConfigureFormulaText(TextMesh textMesh, string text, Vector3 localPosition, float characterSize, int fontSize)

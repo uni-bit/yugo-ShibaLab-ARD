@@ -7,6 +7,7 @@ using UnityEditor;
 
 [ExecuteAlways]
 [RequireComponent(typeof(UdpQuaternionReceiver))]
+[RequireComponent(typeof(PoseCalibrationCoordinator))]
 [RequireComponent(typeof(PoseRotationDriver))]
 [RequireComponent(typeof(PoseDebugOverlay))]
 [RequireComponent(typeof(TestScreenVisualizer))]
@@ -47,6 +48,7 @@ public class PoseTestBootstrap : MonoBehaviour
     private static readonly int StageSpotlightEnabledId = Shader.PropertyToID("_StageSpotlightEnabled");
 
     public Light ActiveSpotLight { get; private set; }
+    public Transform ViewerOriginTransform { get; private set; }
 
     private void Reset()
     {
@@ -199,6 +201,7 @@ public class PoseTestBootstrap : MonoBehaviour
         frontSurface = CreateFrontSurface(rigRoot.transform);
         leftSurface = CreateLeftSurface(rigRoot.transform, frontSurface.Width);
         viewerOrigin = CreateViewerOrigin(rigRoot.transform);
+        ViewerOriginTransform = viewerOrigin;
 
         GameObject rotationPivot = new GameObject(RotationPivotName);
         rotationPivot.transform.SetParent(rigRoot.transform, false);
@@ -206,6 +209,7 @@ public class PoseTestBootstrap : MonoBehaviour
         rotationPivot.transform.localRotation = Quaternion.identity;
 
         UdpQuaternionReceiver receiver = EnsureComponent<UdpQuaternionReceiver>();
+        PoseCalibrationCoordinator calibrationCoordinator = EnsureComponent<PoseCalibrationCoordinator>();
         PoseRotationDriver driver = EnsureComponent<PoseRotationDriver>();
         PoseDebugOverlay overlay = EnsureComponent<PoseDebugOverlay>();
         TestScreenVisualizer visualizer = EnsureComponent<TestScreenVisualizer>();
@@ -232,6 +236,7 @@ public class PoseTestBootstrap : MonoBehaviour
         driver.SetTipLightAlignment(false);
         visualizer.Configure(receiver, tipLight);
         visualizer.ConfigureSurfaces(frontSurface, leftSurface);
+        calibrationCoordinator.Configure(receiver, driver, visualizer);
         overlay.Configure(receiver, driver, visualizer);
     }
 
@@ -273,6 +278,7 @@ public class PoseTestBootstrap : MonoBehaviour
     private void ClearExistingRig()
     {
         ActiveSpotLight = null;
+        ViewerOriginTransform = null;
         ClearSpotlightShaderGlobals();
 
         for (int index = transform.childCount - 1; index >= 0; index--)
@@ -385,6 +391,7 @@ public class PoseTestBootstrap : MonoBehaviour
     private void EnsureRuntimeComponentsAttached()
     {
         EnsureComponent<UdpQuaternionReceiver>();
+        EnsureComponent<PoseCalibrationCoordinator>();
         EnsureComponent<PoseRotationDriver>();
         EnsureComponent<PoseDebugOverlay>();
         EnsureComponent<TestScreenVisualizer>();

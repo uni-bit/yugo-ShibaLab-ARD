@@ -869,17 +869,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3572f3c8036c54d429c8fab4d485b482, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Stage1Manager
-  fishIcon: {fileID: 696840629}
-  rabbitIcon: {fileID: 974217382}
-  deerIcon: {fileID: 358861618}
   leftTree: {fileID: 1605547313}
   rightTree: {fileID: 1911391763}
   winEffectPrefab: {fileID: 539873646695868270, guid: 6d806c1132e0fcc40a80c1f7eac8343c, type: 3}
-  jumpHeight: 2
-  jumpDuration: 0.5
   openDuration: 10
   resetThreshold: 20
-  surprisedSound: {fileID: 8300000, guid: bf30be62c663cda418e68ac9ca441975, type: 3}
+  correctSound: {fileID: 0}
+  wrongSound: {fileID: 0}
   clearSound: {fileID: 0}
 --- !u!82 &1486608319
 AudioSource:

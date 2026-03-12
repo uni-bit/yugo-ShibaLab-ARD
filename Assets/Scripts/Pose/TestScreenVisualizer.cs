@@ -35,7 +35,6 @@ public class TestScreenVisualizer : MonoBehaviour
     [SerializeField] private float targetPointSmoothing = 0f;
     [SerializeField] private float surfaceSwitchHysteresis = 0.18f;
     [SerializeField] private bool autoCalibrateOnFirstPacket = true;
-    [SerializeField] private KeyCode recenterKey = KeyCode.C;
     [SerializeField] private bool useYawPitchRay = true;
     [SerializeField] private RayControlMode iPhoneRayControlMode = RayControlMode.ForwardVectorYawPitch;
     [SerializeField] private bool iPhoneInvertPitch;
@@ -51,7 +50,6 @@ public class TestScreenVisualizer : MonoBehaviour
     [SerializeField] private RotationAxisSource androidVerticalAxisSource = RotationAxisSource.X;
 
     private bool hasReference;
-    private int lastHandledRecenterRequestCount;
     private bool hasSmoothedTargetPoint;
     private ProjectionTargetSurface lastSurface = ProjectionTargetSurface.Front;
 
@@ -80,22 +78,10 @@ public class TestScreenVisualizer : MonoBehaviour
             sourceLight = GetComponentInChildren<Light>();
         }
 
-        lastHandledRecenterRequestCount = receiver != null ? receiver.RecenterRequestCount : 0;
     }
 
     private void Update()
     {
-        if (Input.GetKeyDown(recenterKey))
-        {
-            ResetReference();
-        }
-
-        if (receiver != null && receiver.RecenterRequestCount != lastHandledRecenterRequestCount)
-        {
-            lastHandledRecenterRequestCount = receiver.RecenterRequestCount;
-            ResetReference();
-        }
-
         UpdateSpotlightTarget();
     }
 
@@ -105,7 +91,6 @@ public class TestScreenVisualizer : MonoBehaviour
         sourceLight = lightSource;
         MigrateIPhoneInvertPitchDefault();
         hasReference = false;
-        lastHandledRecenterRequestCount = receiver != null ? receiver.RecenterRequestCount : 0;
     }
 
     public void ConfigureSurfaces(ProjectionSurface frontSurfaceReference, ProjectionSurface leftSurfaceReference)

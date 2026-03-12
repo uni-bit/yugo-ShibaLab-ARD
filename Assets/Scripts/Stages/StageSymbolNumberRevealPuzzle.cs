@@ -54,6 +54,20 @@ public class StageSymbolNumberRevealPuzzle : MonoBehaviour
         SetCompletionObjects(false);
     }
 
+    public void ForceComplete()
+    {
+        for (int index = 0; index < revealTargets.Length; index++)
+        {
+            if (revealTargets[index] != null)
+            {
+                revealTargets[index].ForceReveal();
+            }
+        }
+
+        IsSolved = true;
+        SetCompletionObjects(true);
+    }
+
     private void SetCompletionObjects(bool solved)
     {
         for (int index = 0; index < activateOnComplete.Length; index++)

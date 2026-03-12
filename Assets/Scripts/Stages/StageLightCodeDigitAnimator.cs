@@ -112,6 +112,12 @@ public class StageLightCodeDigitAnimator : MonoBehaviour
         ApplyAnimationFrame(0f);
     }
 
+    public void RefreshVisualStyle()
+    {
+        EnsureTexts();
+        CopyPrimaryStyle();
+    }
+
     private void EnsureTexts()
     {
         if (primaryText == null)
