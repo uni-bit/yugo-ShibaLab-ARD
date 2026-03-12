@@ -15,6 +15,8 @@ public class PoseTestBootstrap : MonoBehaviour
 {
     private const string RigRootName = "Pose Rig";
     private const string ViewerOriginName = "Viewer Origin";
+    private const string RotationPivotName = "Rotation Pivot";
+    private static readonly string[] PointerVisualNames = { "Pointer Shaft", "Pointer Head", "Pointer Tail" };
     private const float ScreenDistance = 3f;
     private const float ScreenHeightWorld = 3f;
     private const float ViewerHeight = 0.4f;
@@ -26,6 +28,7 @@ public class PoseTestBootstrap : MonoBehaviour
     [SerializeField] private bool disableOtherSceneLights = true;
     [SerializeField] private bool forceBlackEnvironmentInEditMode;
     [SerializeField] private bool disableOtherSceneLightsInEditMode;
+    [SerializeField] private bool showDebugPointerVisuals;
     private bool hasBuilt;
     private bool editorPreviewQueued;
 
@@ -197,7 +200,7 @@ public class PoseTestBootstrap : MonoBehaviour
         leftSurface = CreateLeftSurface(rigRoot.transform, frontSurface.Width);
         viewerOrigin = CreateViewerOrigin(rigRoot.transform);
 
-        GameObject rotationPivot = new GameObject("Rotation Pivot");
+        GameObject rotationPivot = new GameObject(RotationPivotName);
         rotationPivot.transform.SetParent(rigRoot.transform, false);
         rotationPivot.transform.localPosition = Vector3.zero;
         rotationPivot.transform.localRotation = Quaternion.identity;
@@ -207,7 +210,7 @@ public class PoseTestBootstrap : MonoBehaviour
         PoseDebugOverlay overlay = EnsureComponent<PoseDebugOverlay>();
         TestScreenVisualizer visualizer = EnsureComponent<TestScreenVisualizer>();
 
-        CreatePointerModel(rotationPivot.transform);
+        SyncDebugPointerVisuals(rotationPivot.transform);
 
         GameObject tipLightObject = new GameObject("Tip Light");
         tipLightObject.transform.SetParent(rotationPivot.transform, false);
@@ -291,6 +294,22 @@ public class PoseTestBootstrap : MonoBehaviour
         }
     }
 
+    private void SyncDebugPointerVisuals(Transform parent)
+    {
+        if (parent == null)
+        {
+            return;
+        }
+
+        RemovePointerVisuals(parent);
+        if (!showDebugPointerVisuals)
+        {
+            return;
+        }
+
+        CreatePointerModel(parent);
+    }
+
     private static void CreatePointerModel(Transform parent)
     {
         GameObject shaft = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -313,6 +332,27 @@ public class PoseTestBootstrap : MonoBehaviour
         tail.transform.localPosition = new Vector3(0f, 0f, 0f);
         tail.transform.localScale = Vector3.one * 0.18f;
         SetRendererColor(tail, new Color(0.3f, 0.8f, 1f, 1f));
+    }
+
+    private static void RemovePointerVisuals(Transform parent)
+    {
+        for (int index = 0; index < PointerVisualNames.Length; index++)
+        {
+            Transform child = parent.Find(PointerVisualNames[index]);
+            if (child == null)
+            {
+                continue;
+            }
+
+            if (Application.isPlaying)
+            {
+                Destroy(child.gameObject);
+            }
+            else
+            {
+                DestroyImmediate(child.gameObject);
+            }
+        }
     }
 
     private static void SetRendererColor(GameObject target, Color color)

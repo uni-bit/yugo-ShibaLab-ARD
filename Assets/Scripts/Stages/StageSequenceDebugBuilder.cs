@@ -346,6 +346,18 @@ public static class StageSequenceDebugBuilder
             codeLockPuzzle = root.gameObject.AddComponent<StageLightCodeLockPuzzle>();
         }
 
+        Stage2PuzzleController puzzleController = root.GetComponent<Stage2PuzzleController>();
+        if (puzzleController == null)
+        {
+            puzzleController = root.gameObject.AddComponent<Stage2PuzzleController>();
+        }
+
+        Stage2CompletionSequence completionSequence = root.GetComponent<Stage2CompletionSequence>();
+        if (completionSequence == null)
+        {
+            completionSequence = root.gameObject.AddComponent<Stage2CompletionSequence>();
+        }
+
         StageCodeLockRig rig = rigRoot.GetComponent<StageCodeLockRig>();
         if (rig == null)
         {
@@ -366,6 +378,8 @@ public static class StageSequenceDebugBuilder
 
             SpotlightSensor upSensor = EnsureSensor(upButton, upButton.transform, upButton.GetComponent<Renderer>(), upButton.GetComponent<Collider>());
             SpotlightSensor downSensor = EnsureSensor(downButton, downButton.transform, downButton.GetComponent<Renderer>(), downButton.GetComponent<Collider>());
+            StageCodeLockButtonIndicator upIndicator = EnsureCodeLockButtonIndicator(columnRoot, upButton, "Up Button Arrow Glyph", upSensor);
+            StageCodeLockButtonIndicator downIndicator = EnsureCodeLockButtonIndicator(columnRoot, downButton, "Down Button Arrow Glyph", downSensor);
 
             StageLightCodeDialColumn column = columnRoot.GetComponent<StageLightCodeDialColumn>();
             if (column == null)
@@ -373,7 +387,7 @@ public static class StageSequenceDebugBuilder
                 column = columnRoot.gameObject.AddComponent<StageLightCodeDialColumn>();
             }
 
-            column.Configure(display.GetComponent<TextMesh>(), upSensor, downSensor, rig, 0);
+            column.Configure(display.GetComponent<TextMesh>(), upSensor, downSensor, upIndicator, downIndicator, rig, 0);
             columns[index] = column;
         }
 
@@ -389,6 +403,10 @@ public static class StageSequenceDebugBuilder
 
         rig.Configure(panel.transform, contentRoot, topTextRoot, door.transform, columnRoots);
         codeLockPuzzle.Configure(columns, door.transform, topFormula, "834");
+
+        StageSymbolNumberRevealPuzzle revealPuzzle = root.GetComponent<StageSymbolNumberRevealPuzzle>();
+        completionSequence.Configure(rigRoot, panel.transform, root);
+        puzzleController.Configure(revealPuzzle, codeLockPuzzle, completionSequence);
     }
 
     private static void RemoveLegacyRootLevelCodeLockObjects(Transform root)
@@ -525,6 +543,33 @@ public static class StageSequenceDebugBuilder
         }
 
         return display;
+    }
+
+    private static StageCodeLockButtonIndicator EnsureCodeLockButtonIndicator(Transform columnRoot, GameObject button, string arrowName, SpotlightSensor sensor)
+    {
+        if (button == null)
+        {
+            return null;
+        }
+
+        StageCodeLockButtonIndicator indicator = button.GetComponent<StageCodeLockButtonIndicator>();
+        if (indicator == null)
+        {
+            indicator = button.AddComponent<StageCodeLockButtonIndicator>();
+        }
+
+        Renderer arrowRenderer = null;
+        if (columnRoot != null)
+        {
+            Transform arrowTransform = columnRoot.Find(arrowName);
+            if (arrowTransform != null)
+            {
+                arrowRenderer = arrowTransform.GetComponent<Renderer>();
+            }
+        }
+
+        indicator.Configure(sensor, button.GetComponent<Renderer>(), arrowRenderer);
+        return indicator;
     }
 
     private static GameObject EnsureStage2Object(Transform root, int index, string mappingText, Vector3 defaultLocalPosition)

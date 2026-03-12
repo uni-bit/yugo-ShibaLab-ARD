@@ -3,6 +3,8 @@ using UnityEngine;
 [AddComponentMenu("Pose/Test Screen Visualizer")]
 public class TestScreenVisualizer : MonoBehaviour
 {
+    private const bool DefaultIPhoneInvertPitch = false;
+
     private enum ProjectionTargetSurface
     {
         Front,
@@ -30,13 +32,14 @@ public class TestScreenVisualizer : MonoBehaviour
     [SerializeField] private float screenDistance = 3f;
     [SerializeField] private float screenHeightWorld = 3f;
     [SerializeField] private float leftScreenWidthMultiplier = 1f;
-    [SerializeField] private float targetPointSmoothing = 18f;
+    [SerializeField] private float targetPointSmoothing = 0f;
     [SerializeField] private float surfaceSwitchHysteresis = 0.18f;
     [SerializeField] private bool autoCalibrateOnFirstPacket = true;
     [SerializeField] private KeyCode recenterKey = KeyCode.C;
     [SerializeField] private bool useYawPitchRay = true;
     [SerializeField] private RayControlMode iPhoneRayControlMode = RayControlMode.ForwardVectorYawPitch;
-    [SerializeField] private bool iPhoneInvertPitch = true;
+    [SerializeField] private bool iPhoneInvertPitch;
+    [SerializeField, HideInInspector] private bool migratedIPhoneInvertPitchDefault;
     [SerializeField] private bool iPhoneInvertYaw;
     [SerializeField] private bool iPhoneUseUpVectorForYaw = true;
     [SerializeField] private RotationAxisSource iPhoneHorizontalAxisSource = RotationAxisSource.Y;
@@ -59,10 +62,14 @@ public class TestScreenVisualizer : MonoBehaviour
     {
         receiver = GetComponent<UdpQuaternionReceiver>();
         sourceLight = GetComponentInChildren<Light>();
+        iPhoneInvertPitch = DefaultIPhoneInvertPitch;
+        migratedIPhoneInvertPitchDefault = true;
     }
 
     private void Awake()
     {
+        MigrateIPhoneInvertPitchDefault();
+
         if (receiver == null)
         {
             receiver = GetComponent<UdpQuaternionReceiver>();
@@ -96,6 +103,7 @@ public class TestScreenVisualizer : MonoBehaviour
     {
         receiver = receiverReference;
         sourceLight = lightSource;
+        MigrateIPhoneInvertPitchDefault();
         hasReference = false;
         lastHandledRecenterRequestCount = receiver != null ? receiver.RecenterRequestCount : 0;
     }
@@ -110,6 +118,22 @@ public class TestScreenVisualizer : MonoBehaviour
     {
         hasReference = false;
         hasSmoothedTargetPoint = false;
+    }
+
+    private void OnValidate()
+    {
+        MigrateIPhoneInvertPitchDefault();
+    }
+
+    private void MigrateIPhoneInvertPitchDefault()
+    {
+        if (migratedIPhoneInvertPitchDefault)
+        {
+            return;
+        }
+
+        iPhoneInvertPitch = DefaultIPhoneInvertPitch;
+        migratedIPhoneInvertPitchDefault = true;
     }
 
     private void ResolveActiveRaySettings(
@@ -169,16 +193,8 @@ public class TestScreenVisualizer : MonoBehaviour
         ProjectionTargetSurface surface;
         ResolveTargetPoint(rayOrigin, rayDirection, out surface, out worldTargetPoint);
 
-        float blend = targetPointSmoothing <= 0f ? 1f : 1f - Mathf.Exp(-targetPointSmoothing * Time.deltaTime);
-        if (!hasSmoothedTargetPoint)
-        {
-            CurrentTargetPoint = worldTargetPoint;
-            hasSmoothedTargetPoint = true;
-        }
-        else
-        {
-            CurrentTargetPoint = Vector3.Lerp(CurrentTargetPoint, worldTargetPoint, blend);
-        }
+        CurrentTargetPoint = worldTargetPoint;
+        hasSmoothedTargetPoint = true;
 
         CurrentSurfaceName = surface.ToString();
         lastSurface = surface;

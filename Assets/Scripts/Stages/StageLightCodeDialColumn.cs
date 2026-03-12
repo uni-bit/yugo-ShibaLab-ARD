@@ -8,6 +8,8 @@ public class StageLightCodeDialColumn : MonoBehaviour
     [SerializeField] private StageCodeLockRig codeLockRig;
     [SerializeField] private SpotlightSensor incrementSensor;
     [SerializeField] private SpotlightSensor decrementSensor;
+    [SerializeField] private StageCodeLockButtonIndicator incrementIndicator;
+    [SerializeField] private StageCodeLockButtonIndicator decrementIndicator;
     [SerializeField] private float holdSecondsPerStep = 1f;
     [SerializeField] private int startingDigit;
 
@@ -21,39 +23,56 @@ public class StageLightCodeDialColumn : MonoBehaviour
     private void Awake()
     {
         SetDigit(startingDigit);
+        ApplyIndicatorState(false, false);
     }
 
     private void Update()
     {
-        ProcessSensor(incrementSensor, ref incrementTimer, 1);
-        ProcessSensor(decrementSensor, ref decrementTimer, -1);
+        bool incrementActive = ProcessSensor(incrementSensor, ref incrementTimer, 1);
+        bool decrementActive = ProcessSensor(decrementSensor, ref decrementTimer, -1);
+        ApplyIndicatorState(incrementActive, decrementActive);
     }
 
-    public void Configure(TextMesh digitTextReference, SpotlightSensor incrementSensorReference, SpotlightSensor decrementSensorReference, StageCodeLockRig rigReference, int initialDigit)
+    public void Configure(
+        TextMesh digitTextReference,
+        SpotlightSensor incrementSensorReference,
+        SpotlightSensor decrementSensorReference,
+        StageCodeLockButtonIndicator incrementIndicatorReference,
+        StageCodeLockButtonIndicator decrementIndicatorReference,
+        StageCodeLockRig rigReference,
+        int initialDigit)
     {
         digitText = digitTextReference;
         digitAnimator = digitText != null ? digitText.GetComponent<StageLightCodeDigitAnimator>() : null;
         incrementSensor = incrementSensorReference;
         decrementSensor = decrementSensorReference;
+        incrementIndicator = incrementIndicatorReference;
+        decrementIndicator = decrementIndicatorReference;
         codeLockRig = rigReference;
         startingDigit = Mathf.Clamp(initialDigit, 0, 9);
         incrementTimer = 0f;
         decrementTimer = 0f;
         SetDigit(startingDigit);
+        ApplyIndicatorState(false, false);
     }
 
-    private void ProcessSensor(SpotlightSensor sensor, ref float timer, int direction)
+    public void SetDigitImmediate(int digit)
+    {
+        SetDigit(digit);
+    }
+
+    private bool ProcessSensor(SpotlightSensor sensor, ref float timer, int direction)
     {
         if (sensor == null || !sensor.IsLit)
         {
             timer = 0f;
-            return;
+            return false;
         }
 
         if (codeLockRig != null && !codeLockRig.IsDominantSensor(sensor))
         {
             timer = 0f;
-            return;
+            return false;
         }
 
         timer += Time.deltaTime;
@@ -61,6 +80,21 @@ public class StageLightCodeDialColumn : MonoBehaviour
         {
             timer -= holdSecondsPerStep;
             SetDigit(CurrentDigit + direction, direction);
+        }
+
+        return true;
+    }
+
+    private void ApplyIndicatorState(bool incrementActive, bool decrementActive)
+    {
+        if (incrementIndicator != null)
+        {
+            incrementIndicator.SetProcessingActive(incrementActive);
+        }
+
+        if (decrementIndicator != null)
+        {
+            decrementIndicator.SetProcessingActive(decrementActive);
         }
     }
 

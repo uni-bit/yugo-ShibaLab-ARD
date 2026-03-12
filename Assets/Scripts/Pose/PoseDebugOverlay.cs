@@ -33,19 +33,6 @@ public class PoseDebugOverlay : MonoBehaviour
         ResolveReferences();
     }
 
-    private void Update()
-    {
-        if (!Application.isPlaying)
-        {
-            return;
-        }
-
-        if (Input.GetKeyDown(toggleOverlayKey))
-        {
-            ToggleOverlayVisibility();
-        }
-    }
-
     private void OnGUI()
     {
         HandleShortcutKeys();

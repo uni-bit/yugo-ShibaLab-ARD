@@ -57,6 +57,7 @@ public class UdpQuaternionReceiver : MonoBehaviour
     private bool hasZ;
     private bool hasW;
     private DateTime lastTouchRecenterTime = DateTime.MinValue;
+    private bool touchInputActive;
 
     public Quaternion LatestRawRotation { get; private set; } = Quaternion.identity;
     public Quaternion LatestStabilizedRawRotation { get; private set; } = Quaternion.identity;
@@ -788,36 +789,54 @@ public class UdpQuaternionReceiver : MonoBehaviour
     {
         if (messages == null || messages.Count == 0)
         {
+            lock (syncRoot)
+            {
+                touchInputActive = false;
+            }
+
             return false;
         }
 
+        bool hasActiveTouch = false;
         for (int index = 0; index < messages.Count; index++)
         {
-            if (!IsActiveTouchMessage(messages[index]))
+            if (IsActiveTouchMessage(messages[index]))
             {
-                continue;
-            }
-
-            lock (syncRoot)
-            {
-                DateTime now = DateTime.UtcNow;
-                double secondsSinceLastTrigger = lastTouchRecenterTime == DateTime.MinValue
-                    ? double.MaxValue
-                    : (now - lastTouchRecenterTime).TotalSeconds;
-
-                if (secondsSinceLastTrigger < touchRecenterCooldownSeconds)
-                {
-                    return false;
-                }
-
-                lastTouchRecenterTime = now;
-                LastRecenterTime = DateTime.Now;
-                RecenterRequestCount++;
-                return true;
+                hasActiveTouch = true;
+                break;
             }
         }
 
-        return false;
+        lock (syncRoot)
+        {
+            if (!hasActiveTouch)
+            {
+                touchInputActive = false;
+                return false;
+            }
+
+            if (touchInputActive)
+            {
+                return false;
+            }
+
+            touchInputActive = true;
+
+            DateTime now = DateTime.UtcNow;
+            double secondsSinceLastTrigger = lastTouchRecenterTime == DateTime.MinValue
+                ? double.MaxValue
+                : (now - lastTouchRecenterTime).TotalSeconds;
+
+            if (secondsSinceLastTrigger < touchRecenterCooldownSeconds)
+            {
+                return false;
+            }
+
+            lastTouchRecenterTime = now;
+            LastRecenterTime = DateTime.Now;
+            RecenterRequestCount++;
+            return true;
+        }
     }
 
     private static bool IsActiveTouchMessage(OscMessage message)

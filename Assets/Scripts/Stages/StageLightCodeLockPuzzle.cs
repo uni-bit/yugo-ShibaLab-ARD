@@ -7,12 +7,14 @@ public class StageLightCodeLockPuzzle : MonoBehaviour
     [SerializeField] private Transform doorTransform;
     [SerializeField] private TextMesh formulaText;
     [SerializeField] private string targetCode = "834";
+    [SerializeField] private bool animateDoorOnSolved;
     [SerializeField] private Vector3 openLocalOffset = new Vector3(0f, 4.4f, 0f);
     [SerializeField] private float openSpeed = 2.2f;
     [SerializeField] private Color lockedFormulaColor = Color.white;
     [SerializeField] private Color unlockedFormulaColor = new Color(1f, 0.86f, 0.3f, 1f);
 
     public bool IsSolved { get; private set; }
+    public string TargetCode => targetCode;
 
     private Vector3 closedDoorLocalPosition;
 
@@ -36,7 +38,9 @@ public class StageLightCodeLockPuzzle : MonoBehaviour
 
         if (doorTransform != null)
         {
-            Vector3 targetPosition = IsSolved ? closedDoorLocalPosition + openLocalOffset : closedDoorLocalPosition;
+            Vector3 targetPosition = IsSolved && animateDoorOnSolved
+                ? closedDoorLocalPosition + openLocalOffset
+                : closedDoorLocalPosition;
             float blend = 1f - Mathf.Exp(-openSpeed * Time.deltaTime);
             doorTransform.localPosition = Vector3.Lerp(doorTransform.localPosition, targetPosition, blend);
         }
@@ -58,6 +62,32 @@ public class StageLightCodeLockPuzzle : MonoBehaviour
         }
 
         ApplyFormulaState();
+    }
+
+    public void ApplyCodeInstantly(string code)
+    {
+        if (columns == null || string.IsNullOrEmpty(code))
+        {
+            return;
+        }
+
+        int digitCount = Mathf.Min(columns.Length, code.Length);
+        for (int index = 0; index < digitCount; index++)
+        {
+            StageLightCodeDialColumn column = columns[index];
+            if (column == null)
+            {
+                continue;
+            }
+
+            int digit = code[index] - '0';
+            if (digit < 0 || digit > 9)
+            {
+                continue;
+            }
+
+            column.SetDigitImmediate(digit);
+        }
     }
 
     private bool IsTargetCodeEntered()

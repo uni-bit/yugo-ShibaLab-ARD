@@ -10,8 +10,8 @@ public class PoseRotationDriver : MonoBehaviour
     [SerializeField] private bool alignTipLightToForward = true;
     [SerializeField] private bool autoCalibrateOnFirstPacket = true;
     [SerializeField] private KeyCode recenterKey = KeyCode.C;
-    [SerializeField] private float rotationSmoothing = 18f;
-    [SerializeField] private float recenterInputIgnoreSeconds = 0.12f;
+    [SerializeField] private float rotationSmoothing = 0f;
+    [SerializeField] private float recenterInputIgnoreSeconds = 0.25f;
     [SerializeField] private Vector3 modelEulerOffset = Vector3.zero;
     [SerializeField] private bool usePresetRelativeAxisCorrection = true;
     [SerializeField] private Vector3 iPhoneRelativeAxisSigns = new Vector3(-1f, -1f, 1f);
@@ -175,8 +175,7 @@ public class PoseRotationDriver : MonoBehaviour
 
         if (rotationTarget != null)
         {
-            float blend = rotationSmoothing <= 0f ? 1f : 1f - Mathf.Exp(-rotationSmoothing * Time.deltaTime);
-            rotationTarget.localRotation = Quaternion.Slerp(rotationTarget.localRotation, targetLocalRotation, blend);
+            rotationTarget.localRotation = targetLocalRotation;
             LatestAppliedRotation = rotationTarget.localRotation;
         }
 
