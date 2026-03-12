@@ -13,6 +13,7 @@ public class Stage2PuzzleController : MonoBehaviour
     [SerializeField] private StageSymbolNumberRevealPuzzle revealPuzzle;
     [SerializeField] private StageLightCodeLockPuzzle codeLockPuzzle;
     [SerializeField] private Stage2CompletionSequence completionSequence;
+    [SerializeField] private KeyCode debugRevealCompleteKey = KeyCode.Alpha7;
     [SerializeField] private KeyCode debugFillCodeKey = KeyCode.Alpha8;
 
     private Stage2State currentState;
@@ -29,6 +30,11 @@ public class Stage2PuzzleController : MonoBehaviour
             return;
         }
 
+        if (Input.GetKeyDown(debugRevealCompleteKey) && revealPuzzle != null)
+        {
+            revealPuzzle.ForceComplete();
+        }
+
         if (Input.GetKeyDown(debugFillCodeKey) && codeLockPuzzle != null)
         {
             codeLockPuzzle.ApplyCodeInstantly(codeLockPuzzle.TargetCode);
@@ -43,6 +49,7 @@ public class Stage2PuzzleController : MonoBehaviour
                     && codeLockPuzzle.IsSolved
                     && completionSequence != null)
                 {
+                    codeLockPuzzle.ApplySolvedVisualState();
                     completionSequence.Play();
                     currentState = Stage2State.PlayingCompletion;
                 }

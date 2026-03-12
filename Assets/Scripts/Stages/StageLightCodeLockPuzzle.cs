@@ -6,17 +6,19 @@ public class StageLightCodeLockPuzzle : MonoBehaviour
     [SerializeField] private StageLightCodeDialColumn[] columns = new StageLightCodeDialColumn[0];
     [SerializeField] private Transform doorTransform;
     [SerializeField] private TextMesh formulaText;
+    [SerializeField] private StageCodeFormulaDisplay formulaDisplay;
     [SerializeField] private string targetCode = "834";
     [SerializeField] private bool animateDoorOnSolved;
     [SerializeField] private Vector3 openLocalOffset = new Vector3(0f, 4.4f, 0f);
     [SerializeField] private float openSpeed = 2.2f;
     [SerializeField] private Color lockedFormulaColor = Color.white;
-    [SerializeField] private Color unlockedFormulaColor = new Color(1f, 0.86f, 0.3f, 1f);
+    [SerializeField] private Color solvedTextColor = new Color(1f, 0.9f, 0.25f, 1f);
 
     public bool IsSolved { get; private set; }
     public string TargetCode => targetCode;
 
     private Vector3 closedDoorLocalPosition;
+    private bool solvedVisualsApplied;
 
     private void Awake()
     {
@@ -30,9 +32,10 @@ public class StageLightCodeLockPuzzle : MonoBehaviour
 
     private void Update()
     {
-        if (!IsSolved && IsTargetCodeEntered())
+        bool isTargetCodeEntered = IsTargetCodeEntered();
+        if (!solvedVisualsApplied && IsSolved != isTargetCodeEntered)
         {
-            IsSolved = true;
+            IsSolved = isTargetCodeEntered;
             ApplyFormulaState();
         }
 
@@ -46,15 +49,21 @@ public class StageLightCodeLockPuzzle : MonoBehaviour
         }
     }
 
-    public void Configure(StageLightCodeDialColumn[] dialColumns, Transform doorReference, TextMesh formulaTextReference, string code)
+    public void Configure(
+        StageLightCodeDialColumn[] dialColumns,
+        Transform doorReference,
+        TextMesh formulaTextReference,
+        StageCodeFormulaDisplay formulaDisplayReference,
+        string code)
     {
         columns = dialColumns;
         doorTransform = doorReference;
         formulaText = formulaTextReference;
+        formulaDisplay = formulaDisplayReference;
         targetCode = code;
         lockedFormulaColor = Color.white;
-        unlockedFormulaColor = new Color(1f, 0.86f, 0.3f, 1f);
         IsSolved = false;
+        solvedVisualsApplied = false;
 
         if (doorTransform != null)
         {
@@ -62,6 +71,34 @@ public class StageLightCodeLockPuzzle : MonoBehaviour
         }
 
         ApplyFormulaState();
+    }
+
+    public void ApplySolvedVisualState()
+    {
+        if (solvedVisualsApplied)
+        {
+            return;
+        }
+
+        solvedVisualsApplied = true;
+
+        for (int index = 0; index < columns.Length; index++)
+        {
+            if (columns[index] != null)
+            {
+                columns[index].ApplySolvedAppearance();
+            }
+        }
+
+        if (formulaText != null)
+        {
+            formulaText.color = solvedTextColor;
+        }
+
+        if (formulaDisplay != null)
+        {
+            formulaDisplay.SetDisplayColorOverride(solvedTextColor, solvedTextColor);
+        }
     }
 
     public void ApplyCodeInstantly(string code)
@@ -118,7 +155,12 @@ public class StageLightCodeLockPuzzle : MonoBehaviour
     {
         if (formulaText != null)
         {
-            formulaText.color = IsSolved ? unlockedFormulaColor : lockedFormulaColor;
+            formulaText.color = solvedVisualsApplied ? solvedTextColor : lockedFormulaColor;
+        }
+
+        if (formulaDisplay != null && !solvedVisualsApplied)
+        {
+            formulaDisplay.RefreshState();
         }
     }
 }

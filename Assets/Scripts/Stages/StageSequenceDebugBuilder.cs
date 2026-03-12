@@ -13,7 +13,8 @@ public static class StageSequenceDebugBuilder
     {
         "Stage1 Debug Root",
         "Stage2 Debug Root",
-        "Stage3 Debug Root"
+        "Stage3 Debug Root",
+        "Stage4 Debug Root"
     };
     private static Font builtInFont;
  
@@ -21,21 +22,24 @@ public static class StageSequenceDebugBuilder
     {
         RemoveLegacyGeneratedRoots(parent);
         Transform container = FindOrCreateContainer(parent);
-        GameObject[] stageRoots = existingStageRoots != null && existingStageRoots.Length == 3
+        GameObject[] stageRoots = existingStageRoots != null && existingStageRoots.Length == 4
             ? existingStageRoots
-            : new GameObject[3];
+            : new GameObject[4];
 
         stageRoots[0] = ResolveStageRootReference(container, stageRoots[0], 0, "Stage1 Root");
         stageRoots[1] = ResolveStageRootReference(container, stageRoots[1], 1, "Stage2 Root");
         stageRoots[2] = ResolveStageRootReference(container, stageRoots[2], 2, "Stage3 Root");
+        stageRoots[3] = ResolveStageRootReference(container, stageRoots[3], 3, "Stage4 Root");
 
         stageRoots[0] = EnsureStageRoot(container, stageRoots[0], 0, "Stage1 Root");
         stageRoots[1] = EnsureStageRoot(container, stageRoots[1], 1, "Stage2 Root");
         stageRoots[2] = EnsureStageRoot(container, stageRoots[2], 2, "Stage3 Root");
+        stageRoots[3] = EnsureStageRoot(container, stageRoots[3], 3, "Stage4 Root");
 
         EnsureStage1(stageRoots[0].transform);
         EnsureStage2(stageRoots[1].transform);
         EnsureStage3(stageRoots[2].transform);
+        EnsureStage4(stageRoots[3].transform);
 
         return stageRoots;
     }
@@ -121,6 +125,8 @@ public static class StageSequenceDebugBuilder
 
     private static void EnsureStage1(Transform root)
     {
+        EnsureStageSpotlightSettings(root, true, 18f, 60f, 16f, Color.white);
+
         if (root.childCount > 0)
         {
             return;
@@ -170,6 +176,7 @@ public static class StageSequenceDebugBuilder
 
     private static void EnsureStage2(Transform root)
     {
+        EnsureStageSpotlightSettings(root, true, 20f, 68f, 18f, Color.white);
         EnsureGround(root, "Stage2 Ground", new Vector3(0f, -0.55f, 8f), new Vector3(10f, 0.2f, 8f), new Color(0.12f, 0.12f, 0.2f, 1f));
         RemoveGeneratedStage2Label(root);
         RemoveGeneratedStage2CompleteMarker(root);
@@ -215,18 +222,106 @@ public static class StageSequenceDebugBuilder
 
     private static void EnsureStage3(Transform root)
     {
+        EnsureRockHintStage(
+            root,
+            3,
+            "Find the hidden green and blue stones",
+            new Vector3(14f, 0.2f, 18f),
+            new Color(0.08f, 0.08f, 0.1f, 1f),
+            new Vector3(0f, 3f, 5.4f),
+            new Vector3(0f, 0f, 8.5f),
+            new Vector3(-4.7f, 0.72f, 6.1f),
+            new Vector3(3.8f, 0f, 13.4f),
+            new Vector3(0f, 0.7f, 0.85f),
+            true,
+            3);
+    }
+
+    private static void EnsureStage4(Transform root)
+    {
+        EnsureRockHintStage(
+            root,
+            4,
+            "Follow the same light logic deeper inside",
+            new Vector3(16f, 0.2f, 20f),
+            new Color(0.09f, 0.07f, 0.08f, 1f),
+            new Vector3(0f, 3f, 5.6f),
+            new Vector3(0f, 0f, 9.4f),
+            new Vector3(4.6f, 0.78f, 7.3f),
+            new Vector3(-4.2f, 0f, 14.2f),
+            new Vector3(0f, 0.72f, 0.95f),
+            false,
+            3);
+    }
+
+    private static void EnsureRockHintStage(
+        Transform root,
+        int stageNumber,
+        string objectiveText,
+        Vector3 groundScale,
+        Color groundColor,
+        Vector3 labelPosition,
+        Vector3 pedestalRowPosition,
+        Vector3 greenHintPosition,
+        Vector3 cavePosition,
+        Vector3 blueHintLocalPosition,
+        bool advanceToNextStage,
+        int nextStageIndex)
+    {
+        EnsureStageSpotlightSettings(root, true, 14f, 42f, 15f, Color.white);
         RemoveGeneratedStage3Content(root);
+
+        EnsureGround(root, "Stage" + stageNumber + " Ground", new Vector3(0f, -0.55f, groundScale.z * 0.5f + 0.5f), groundScale, groundColor);
+
+        Transform labelRoot = FindOrCreateChildIfMissing(root, "Stage" + stageNumber + " Label", labelPosition);
+        labelRoot.localPosition = labelPosition;
+        TextMesh labelText = labelRoot.GetComponent<TextMesh>();
+        if (labelText == null)
+        {
+            labelText = labelRoot.gameObject.AddComponent<TextMesh>();
+        }
+
+        labelText.text = "Stage " + stageNumber + "\n" + objectiveText;
+        labelText.characterSize = 0.18f;
+        labelText.fontSize = 96;
+        labelText.alignment = TextAlignment.Center;
+        labelText.anchor = TextAnchor.MiddleCenter;
+        labelText.color = new Color(0.9f, 0.95f, 1f, 1f);
+        ApplyBuiltInFont(labelText);
+
+        Transform puzzleRoot = FindOrCreateChildIfMissing(root, "Stage" + stageNumber + " Puzzle Root", Vector3.zero);
+        Transform pedestalRow = FindOrCreateChildIfMissing(puzzleRoot, "Pedestal Row", pedestalRowPosition);
+        pedestalRow.localPosition = pedestalRowPosition;
+        Transform hiddenHintArea = FindOrCreateChildIfMissing(puzzleRoot, "Hidden Hint Area", Vector3.zero);
+        Transform caveRoot = FindOrCreateChildIfMissing(hiddenHintArea, "Blue Hint Cave", cavePosition);
+        caveRoot.localPosition = cavePosition;
+
+        Transform redPedestalRock = EnsureStage3Pedestal(pedestalRow, "Red Pedestal", new Vector3(-2.6f, 0f, 0f), new Color(0.24f, 0.12f, 0.1f, 1f), "Red Pedestal Rock", new Color(0.95f, 0.28f, 0.22f, 1f));
+        Transform greenPedestalRock = EnsureStage3Pedestal(pedestalRow, "Green Pedestal", new Vector3(0f, 0f, 0f), new Color(0.12f, 0.2f, 0.12f, 1f), "Green Pedestal Rock", new Color(0.2f, 0.9f, 0.35f, 1f));
+        Transform bluePedestalRock = EnsureStage3Pedestal(pedestalRow, "Blue Pedestal", new Vector3(2.6f, 0f, 0f), new Color(0.1f, 0.14f, 0.24f, 1f), "Blue Pedestal Rock", new Color(0.24f, 0.58f, 0.98f, 1f));
+
+        Transform greenHintRock = EnsureStage3HiddenRock(hiddenHintArea, "Green Hint Rock", greenHintPosition, new Vector3(0.9f, 0.9f, 0.9f), new Color(0.2f, 0.9f, 0.35f, 1f));
+        EnsureStage3Cave(caveRoot);
+        Transform blueHintRock = EnsureStage3HiddenRock(caveRoot, "Blue Hint Rock", blueHintLocalPosition, new Vector3(0.82f, 0.82f, 0.82f), new Color(0.24f, 0.58f, 0.98f, 1f));
+
+        Stage3RockHintPuzzle puzzle = root.GetComponent<Stage3RockHintPuzzle>();
+        if (puzzle == null)
+        {
+            puzzle = root.gameObject.AddComponent<Stage3RockHintPuzzle>();
+        }
+
+        puzzle.ConfigureDefaults(redPedestalRock, greenPedestalRock, bluePedestalRock, greenHintRock, blueHintRock);
+        puzzle.ConfigureTransition(advanceToNextStage, nextStageIndex);
     }
 
     private static void RemoveGeneratedStage3Content(Transform root)
     {
         string[] generatedChildNames =
         {
-            "Stage3 Ground",
-            "Stage3 Label",
             "Code Lock Panel",
             "Code Lock Content",
-            "Lock Door"
+            "Lock Door",
+            "Code Lock Rig"
         };
 
         for (int index = 0; index < generatedChildNames.Length; index++)
@@ -277,6 +372,63 @@ public static class StageSequenceDebugBuilder
                 Object.DestroyImmediate(columns[index]);
             }
         }
+    }
+
+    private static Transform EnsureStage3Pedestal(Transform parent, string pedestalName, Vector3 localPosition, Color pedestalColor, string rockName, Color rockColor)
+    {
+        Transform pedestalRoot = FindOrCreateChildIfMissing(parent, pedestalName, localPosition);
+        pedestalRoot.localPosition = localPosition;
+
+        GameObject pedestalBase = EnsurePrimitive(pedestalRoot, "Base", PrimitiveType.Cylinder, new Vector3(0f, 0.5f, 0f), new Vector3(1.05f, 0.5f, 1.05f));
+        SetRendererColor(pedestalBase, pedestalColor);
+
+        GameObject pedestalTop = EnsurePrimitive(pedestalRoot, "Top", PrimitiveType.Cylinder, new Vector3(0f, 1.08f, 0f), new Vector3(0.86f, 0.12f, 0.86f));
+        SetRendererColor(pedestalTop, pedestalColor * 1.15f);
+
+        return EnsureStage3Rock(pedestalRoot, rockName, new Vector3(0f, 1.62f, 0f), new Vector3(0.78f, 0.62f, 0.72f), rockColor);
+    }
+
+    private static Transform EnsureStage3Rock(Transform parent, string name, Vector3 localPosition, Vector3 localScale, Color color)
+    {
+        bool existed = parent.Find(name) != null;
+        GameObject rock = EnsurePrimitive(parent, name, PrimitiveType.Sphere, localPosition, localScale);
+        if (!existed)
+        {
+            rock.transform.localPosition = localPosition;
+            rock.transform.localRotation = Quaternion.Euler(12f, 18f, -8f);
+            rock.transform.localScale = localScale;
+        }
+
+        SetRendererColor(rock, color);
+        return rock.transform;
+    }
+
+    private static Transform EnsureStage3HiddenRock(Transform parent, string name, Vector3 localPosition, Vector3 localScale, Color color)
+    {
+        Transform rock = EnsureStage3Rock(parent, name, localPosition, localScale, color);
+        SpotlightSensor sensor = EnsureSensor(rock.gameObject, rock, rock.GetComponent<Renderer>(), rock.GetComponent<Collider>());
+        if (sensor != null)
+        {
+            sensor.RefreshState();
+        }
+
+        return rock;
+    }
+
+    private static void EnsureStage3Cave(Transform caveRoot)
+    {
+        caveRoot.localPosition = new Vector3(3.8f, 0f, 13.4f);
+
+        GameObject leftWall = EnsurePrimitive(caveRoot, "Left Wall", PrimitiveType.Cube, new Vector3(-1.25f, 1.1f, 0f), new Vector3(0.55f, 2.2f, 2.6f));
+        GameObject rightWall = EnsurePrimitive(caveRoot, "Right Wall", PrimitiveType.Cube, new Vector3(1.25f, 1.1f, 0f), new Vector3(0.55f, 2.2f, 2.6f));
+        GameObject roof = EnsurePrimitive(caveRoot, "Roof", PrimitiveType.Cube, new Vector3(0f, 2.1f, 0f), new Vector3(3.1f, 0.45f, 2.6f));
+        GameObject backWall = EnsurePrimitive(caveRoot, "Back Wall", PrimitiveType.Cube, new Vector3(0f, 1.05f, 1.3f), new Vector3(3.1f, 2.1f, 0.35f));
+
+        Color caveColor = new Color(0.12f, 0.11f, 0.13f, 1f);
+        SetRendererColor(leftWall, caveColor);
+        SetRendererColor(rightWall, caveColor);
+        SetRendererColor(roof, caveColor * 1.08f);
+        SetRendererColor(backWall, caveColor * 0.92f);
     }
 
     private static void RemoveGeneratedStage2CompleteMarker(Transform root)
@@ -402,10 +554,10 @@ public static class StageSequenceDebugBuilder
         SetRendererColor(door, new Color(0.08f, 0.09f, 0.1f, 1f));
 
         rig.Configure(panel.transform, contentRoot, topTextRoot, door.transform, columnRoots);
-        codeLockPuzzle.Configure(columns, door.transform, topFormula, "834");
+        codeLockPuzzle.Configure(columns, door.transform, topFormula, formulaDisplay, "834");
 
         StageSymbolNumberRevealPuzzle revealPuzzle = root.GetComponent<StageSymbolNumberRevealPuzzle>();
-        completionSequence.Configure(rigRoot, panel.transform, root);
+        completionSequence.Configure(rigRoot, new[] { contentRoot, topTextRoot, door.transform }, panel.transform, root);
         puzzleController.Configure(revealPuzzle, codeLockPuzzle, completionSequence);
     }
 
@@ -1153,9 +1305,9 @@ public static class StageSequenceDebugBuilder
         if (renderer != null)
         {
             Material sharedMaterial = renderer.sharedMaterial;
+            Shader shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
             if (sharedMaterial == null)
             {
-                Shader shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
                 if (shader == null)
                 {
                     return;
@@ -1164,6 +1316,13 @@ public static class StageSequenceDebugBuilder
                 sharedMaterial = new Material(shader);
                 renderer.sharedMaterial = sharedMaterial;
             }
+            else
+            {
+                Material uniqueMaterial = new Material(sharedMaterial);
+                uniqueMaterial.name = target.name + " Material";
+                renderer.sharedMaterial = uniqueMaterial;
+                sharedMaterial = uniqueMaterial;
+            }
 
             if (sharedMaterial.HasProperty("_BaseColor"))
             {
@@ -1171,6 +1330,21 @@ public static class StageSequenceDebugBuilder
             }
 
             sharedMaterial.color = color;
+        }
+    }
+
+    private static void EnsureStageSpotlightSettings(Transform root, bool enabled, float angle, float lightRange, float intensity, Color color)
+    {
+        if (root == null)
+        {
+            return;
+        }
+
+        StageSpotlightSettings settings = root.GetComponent<StageSpotlightSettings>();
+        if (settings == null)
+        {
+            settings = root.gameObject.AddComponent<StageSpotlightSettings>();
+            settings.Configure(enabled, angle, lightRange, intensity, color);
         }
     }
 

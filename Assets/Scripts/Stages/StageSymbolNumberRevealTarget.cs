@@ -44,4 +44,9 @@ public class StageSymbolNumberRevealTarget : MonoBehaviour
     {
         HasBeenRevealed = false;
     }
+
+    public void ForceReveal()
+    {
+        HasBeenRevealed = true;
+    }
 }

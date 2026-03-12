@@ -9,7 +9,6 @@ public class PoseRotationDriver : MonoBehaviour
     [SerializeField] private float tipLightForwardOffset = 0.2f;
     [SerializeField] private bool alignTipLightToForward = true;
     [SerializeField] private bool autoCalibrateOnFirstPacket = true;
-    [SerializeField] private KeyCode recenterKey = KeyCode.C;
     [SerializeField] private float rotationSmoothing = 0f;
     [SerializeField] private float recenterInputIgnoreSeconds = 0.25f;
     [SerializeField] private Vector3 modelEulerOffset = Vector3.zero;
@@ -24,7 +23,6 @@ public class PoseRotationDriver : MonoBehaviour
     private Quaternion targetLocalRotation = Quaternion.identity;
     private bool hasCalibration;
     private bool pendingRecenterSample;
-    private int lastHandledRecenterRequestCount;
     private float ignoreIncomingUntilTime;
 
     private void Reset()
@@ -49,7 +47,6 @@ public class PoseRotationDriver : MonoBehaviour
         initialLocalRotation = rotationTarget != null ? rotationTarget.localRotation : Quaternion.identity;
         targetLocalRotation = initialLocalRotation;
         LatestAppliedRotation = initialLocalRotation;
-        lastHandledRecenterRequestCount = receiver != null ? receiver.RecenterRequestCount : 0;
     }
 
     private void OnValidate()
@@ -76,7 +73,6 @@ public class PoseRotationDriver : MonoBehaviour
         LatestAppliedRotation = initialLocalRotation;
         hasCalibration = false;
         pendingRecenterSample = false;
-        lastHandledRecenterRequestCount = receiver != null ? receiver.RecenterRequestCount : 0;
     }
 
     public void SetTipLightAlignment(bool shouldAlign)
@@ -115,17 +111,6 @@ public class PoseRotationDriver : MonoBehaviour
 
     private void Update()
     {
-        if (Input.GetKeyDown(recenterKey))
-        {
-            ResetCalibration();
-        }
-
-        if (receiver != null && receiver.RecenterRequestCount != lastHandledRecenterRequestCount)
-        {
-            lastHandledRecenterRequestCount = receiver.RecenterRequestCount;
-            ResetCalibration();
-        }
-
         if (receiver != null)
         {
             if (Time.unscaledTime < ignoreIncomingUntilTime)

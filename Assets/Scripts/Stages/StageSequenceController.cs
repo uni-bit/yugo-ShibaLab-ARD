@@ -8,8 +8,9 @@ using UnityEditor;
 public class StageSequenceController : MonoBehaviour
 {
     private const int DefaultStartingStageIndex = 1;
+    private const int StageCount = 4;
 
-    [SerializeField] private GameObject[] stageRoots = new GameObject[3];
+    [SerializeField] private GameObject[] stageRoots = new GameObject[StageCount];
     [SerializeField] private bool autoCreateStageSetupIfMissing = true;
     [SerializeField] private bool autoSyncStageSetup = true;
     [SerializeField] private int startingStageIndex = DefaultStartingStageIndex;
@@ -20,12 +21,15 @@ public class StageSequenceController : MonoBehaviour
     [SerializeField] private KeyCode stage1Key = KeyCode.Alpha1;
     [SerializeField] private KeyCode stage2Key = KeyCode.Alpha2;
     [SerializeField] private KeyCode stage3Key = KeyCode.Alpha3;
+    [SerializeField] private KeyCode stage4Key = KeyCode.Alpha4;
 
 #if UNITY_EDITOR
     private bool pendingEditorSync;
 #endif
 
     private bool pendingRuntimeStageRefresh;
+    private StageTransitionFader transitionFader;
+    private PoseTestBootstrap poseBootstrap;
 
     public int CurrentStageIndex { get; private set; }
 
@@ -34,13 +38,14 @@ public class StageSequenceController : MonoBehaviour
         MigrateStartingStageDefault();
         DiscoverExistingStageRoots();
         SyncStageSetupIfEnabled();
-        ApplyStageVisibility(Mathf.Clamp(startingStageIndex, 0, Mathf.Max(0, stageRoots.Length - 1)));
+        ApplyStageVisibility(GetPreferredEditModeStageIndex());
     }
 
     private void Awake()
     {
         MigrateStartingStageDefault();
         DiscoverExistingStageRoots();
+        ResolveRuntimeReferences();
         SyncStageSetupIfEnabled();
         ApplyStageVisibility(Mathf.Clamp(startingStageIndex, 0, Mathf.Max(0, stageRoots.Length - 1)));
         pendingRuntimeStageRefresh = Application.isPlaying;
@@ -64,7 +69,7 @@ public class StageSequenceController : MonoBehaviour
 
         if (!Application.isPlaying)
         {
-            ApplyStageVisibility(Mathf.Clamp(startingStageIndex, 0, Mathf.Max(0, stageRoots.Length - 1)));
+            ApplyStageVisibility(GetPreferredEditModeStageIndex());
         }
     }
 
@@ -101,12 +106,32 @@ public class StageSequenceController : MonoBehaviour
         {
             SetStage(2);
         }
+        else if (Input.GetKeyDown(stage4Key))
+        {
+            SetStage(3);
+        }
     }
 
     public void SetStage(int stageIndex)
     {
         ApplyStageVisibility(stageIndex);
         RefreshActiveStageState();
+    }
+
+    public void FadeToStage(int stageIndex)
+    {
+        ResolveRuntimeReferences();
+        if (!Application.isPlaying || transitionFader == null || transitionFader.IsFading)
+        {
+            SetStage(stageIndex);
+            return;
+        }
+
+        StartCoroutine(transitionFader.FadeOutIn(() =>
+        {
+            ApplyStageVisibility(stageIndex);
+            RefreshActiveStageState();
+        }));
     }
 
     public void NextStage()
@@ -140,7 +165,7 @@ public class StageSequenceController : MonoBehaviour
     {
         DiscoverExistingStageRoots();
         stageRoots = StageSequenceDebugBuilder.EnsureStageSetup(transform, stageRoots);
-        ApplyStageVisibility(Mathf.Clamp(startingStageIndex, 0, Mathf.Max(0, stageRoots.Length - 1)));
+        ApplyStageVisibility(GetPreferredEditModeStageIndex());
     }
 
     [ContextMenu("Sync Stage Setup")]
@@ -148,7 +173,7 @@ public class StageSequenceController : MonoBehaviour
     {
         DiscoverExistingStageRoots();
         stageRoots = StageSequenceDebugBuilder.EnsureStageSetup(transform, stageRoots);
-        ApplyStageVisibility(Mathf.Clamp(startingStageIndex, 0, Mathf.Max(0, stageRoots.Length - 1)));
+        ApplyStageVisibility(GetPreferredEditModeStageIndex());
     }
 
     public void CreateDebugStageSetup()
@@ -159,7 +184,42 @@ public class StageSequenceController : MonoBehaviour
     public void ConfigureStageRoots(GameObject[] roots)
     {
         stageRoots = roots;
-        ApplyStageVisibility(Mathf.Clamp(startingStageIndex, 0, Mathf.Max(0, stageRoots.Length - 1)));
+        ApplyStageVisibility(GetPreferredEditModeStageIndex());
+    }
+
+    private int GetPreferredEditModeStageIndex()
+    {
+        if (Application.isPlaying)
+        {
+            return Mathf.Clamp(startingStageIndex, 0, Mathf.Max(0, stageRoots.Length - 1));
+        }
+
+        int activeStageIndex = GetCurrentlyActiveStageIndex();
+        if (activeStageIndex >= 0)
+        {
+            return activeStageIndex;
+        }
+
+        return Mathf.Clamp(startingStageIndex, 0, Mathf.Max(0, stageRoots.Length - 1));
+    }
+
+    private int GetCurrentlyActiveStageIndex()
+    {
+        if (stageRoots == null)
+        {
+            return -1;
+        }
+
+        for (int index = 0; index < stageRoots.Length; index++)
+        {
+            GameObject stageRoot = stageRoots[index];
+            if (stageRoot != null && stageRoot.activeSelf)
+            {
+                return index;
+            }
+        }
+
+        return -1;
     }
 
     private void ApplyStageVisibility(int activeIndex)
@@ -198,6 +258,8 @@ public class StageSequenceController : MonoBehaviour
             return;
         }
 
+        ApplyActiveStageSpotlightSettings(activeRoot);
+
         SpotlightSensor[] sensors = activeRoot.GetComponentsInChildren<SpotlightSensor>(true);
         for (int index = 0; index < sensors.Length; index++)
         {
@@ -216,6 +278,44 @@ public class StageSequenceController : MonoBehaviour
             }
         }
 
+    }
+
+    private void ApplyActiveStageSpotlightSettings(GameObject activeRoot)
+    {
+        if (activeRoot == null)
+        {
+            return;
+        }
+
+        ResolveRuntimeReferences();
+        Light activeSpotLight = poseBootstrap != null ? poseBootstrap.ActiveSpotLight : null;
+        if (activeSpotLight == null)
+        {
+            return;
+        }
+
+        StageSpotlightSettings spotlightSettings = activeRoot.GetComponent<StageSpotlightSettings>();
+        if (spotlightSettings != null)
+        {
+            spotlightSettings.ApplyTo(activeSpotLight);
+        }
+    }
+
+    private void ResolveRuntimeReferences()
+    {
+        if (transitionFader == null)
+        {
+            transitionFader = GetComponent<StageTransitionFader>();
+            if (transitionFader == null)
+            {
+                transitionFader = gameObject.AddComponent<StageTransitionFader>();
+            }
+        }
+
+        if (poseBootstrap == null)
+        {
+            poseBootstrap = FindFirstObjectByType<PoseTestBootstrap>();
+        }
     }
 
     private void CreateStageSetupIfNeeded()
@@ -246,7 +346,7 @@ public class StageSequenceController : MonoBehaviour
 
     private bool AreAnyStageRootsMissing()
     {
-        if (stageRoots == null || stageRoots.Length < 3)
+        if (stageRoots == null || stageRoots.Length < StageCount)
         {
             return true;
         }
@@ -264,9 +364,9 @@ public class StageSequenceController : MonoBehaviour
 
     private void DiscoverExistingStageRoots()
     {
-        if (stageRoots == null || stageRoots.Length != 3)
+        if (stageRoots == null || stageRoots.Length != StageCount)
         {
-            stageRoots = new GameObject[3];
+            stageRoots = new GameObject[StageCount];
         }
 
         StageRootMarker[] markers = GetComponentsInChildren<StageRootMarker>(true);

@@ -12,14 +12,17 @@ public class StageCodeLockButtonIndicator : MonoBehaviour
     [SerializeField] private Color idleArrowHiddenColor = new Color(0.45f, 0.8f, 0.9f, 0f);
     [SerializeField] private Color litArrowColor = new Color(1f, 0.95f, 0.55f, 1f);
     [SerializeField] private Color activeArrowColor = new Color(0.45f, 1f, 0.42f, 1f);
-    [SerializeField] private float buttonEmissionIntensity = 1.1f;
+    [SerializeField] private float buttonEmissionIntensity = 0f;
     [SerializeField] private float activeButtonEmissionIntensity = 2.3f;
-    [SerializeField] private float arrowEmissionIntensity = 1.8f;
+    [SerializeField] private float arrowEmissionIntensity = 0f;
     [SerializeField] private float activeArrowEmissionIntensity = 2.6f;
+    [SerializeField] private Color solvedButtonColor = new Color(1f, 0.84f, 0.18f, 1f);
+    [SerializeField] private Color solvedArrowColor = new Color(1f, 0.9f, 0.25f, 1f);
 
     private MaterialPropertyBlock buttonPropertyBlock;
     private MaterialPropertyBlock arrowPropertyBlock;
     private bool isProcessingActive;
+    private bool useSolvedAppearance;
 
     private void Awake()
     {
@@ -55,12 +58,24 @@ public class StageCodeLockButtonIndicator : MonoBehaviour
 
     public void SetProcessingActive(bool active)
     {
+        if (useSolvedAppearance)
+        {
+            return;
+        }
+
         if (isProcessingActive == active)
         {
             return;
         }
 
         isProcessingActive = active;
+        RefreshState();
+    }
+
+    public void SetSolvedAppearance(bool solved)
+    {
+        useSolvedAppearance = solved;
+        isProcessingActive = false;
         RefreshState();
     }
 
@@ -73,7 +88,7 @@ public class StageCodeLockButtonIndicator : MonoBehaviour
             spotlightSensor.RefreshState();
         }
 
-        bool showActiveProcessing = isProcessingActive && spotlightSensor != null && spotlightSensor.IsLit;
+        bool showActiveProcessing = !useSolvedAppearance && isProcessingActive && spotlightSensor != null && spotlightSensor.IsLit;
         ApplyButtonState(showActiveProcessing);
         ApplyArrowState(showActiveProcessing);
     }
@@ -91,8 +106,12 @@ public class StageCodeLockButtonIndicator : MonoBehaviour
             return;
         }
 
-        Color appliedColor = showActiveProcessing ? activeButtonColor : idleButtonColor;
-        float emissionIntensity = showActiveProcessing ? activeButtonEmissionIntensity : buttonEmissionIntensity;
+        Color appliedColor = useSolvedAppearance
+            ? solvedButtonColor
+            : showActiveProcessing ? activeButtonColor : idleButtonColor;
+        float emissionIntensity = useSolvedAppearance
+            ? activeButtonEmissionIntensity
+            : showActiveProcessing ? activeButtonEmissionIntensity : buttonEmissionIntensity;
         Color emissionColor = appliedColor * emissionIntensity;
 
         buttonRenderer.GetPropertyBlock(buttonPropertyBlock);
@@ -104,7 +123,14 @@ public class StageCodeLockButtonIndicator : MonoBehaviour
         Material sharedMaterial = buttonRenderer.sharedMaterial;
         if (sharedMaterial != null && sharedMaterial.HasProperty("_EmissionColor"))
         {
-            sharedMaterial.EnableKeyword("_EMISSION");
+            if (emissionIntensity > 0.0001f)
+            {
+                sharedMaterial.EnableKeyword("_EMISSION");
+            }
+            else
+            {
+                sharedMaterial.DisableKeyword("_EMISSION");
+            }
         }
     }
 
@@ -121,11 +147,16 @@ public class StageCodeLockButtonIndicator : MonoBehaviour
             return;
         }
 
-        Color litColor = showActiveProcessing ? activeArrowColor : litArrowColor;
-        float emissionIntensity = showActiveProcessing ? activeArrowEmissionIntensity : arrowEmissionIntensity;
+        Color litColor = useSolvedAppearance
+            ? solvedArrowColor
+            : showActiveProcessing ? activeArrowColor : litArrowColor;
+        Color hiddenColor = useSolvedAppearance ? solvedArrowColor : idleArrowHiddenColor;
+        float emissionIntensity = useSolvedAppearance
+            ? activeArrowEmissionIntensity
+            : showActiveProcessing ? activeArrowEmissionIntensity : arrowEmissionIntensity;
 
         arrowRenderer.GetPropertyBlock(arrowPropertyBlock);
-        arrowPropertyBlock.SetColor("_HiddenColor", idleArrowHiddenColor);
+        arrowPropertyBlock.SetColor("_HiddenColor", hiddenColor);
         arrowPropertyBlock.SetColor("_LitColor", litColor);
         arrowPropertyBlock.SetColor("_EmissionColor", litColor * emissionIntensity);
         arrowRenderer.SetPropertyBlock(arrowPropertyBlock);

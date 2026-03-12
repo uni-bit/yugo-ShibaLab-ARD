@@ -12,6 +12,7 @@ public class StageLightCodeDialColumn : MonoBehaviour
     [SerializeField] private StageCodeLockButtonIndicator decrementIndicator;
     [SerializeField] private float holdSecondsPerStep = 1f;
     [SerializeField] private int startingDigit;
+    [SerializeField] private Color solvedDigitColor = new Color(1f, 0.9f, 0.25f, 1f);
 
     public int CurrentDigit { get; private set; }
     public SpotlightSensor IncrementSensor => incrementSensor;
@@ -19,6 +20,7 @@ public class StageLightCodeDialColumn : MonoBehaviour
 
     private float incrementTimer;
     private float decrementTimer;
+    private bool inputLocked;
 
     private void Awake()
     {
@@ -61,8 +63,50 @@ public class StageLightCodeDialColumn : MonoBehaviour
         SetDigit(digit);
     }
 
+    public void SetInputLocked(bool locked)
+    {
+        inputLocked = locked;
+        if (locked)
+        {
+            incrementTimer = 0f;
+            decrementTimer = 0f;
+        }
+    }
+
+    public void ApplySolvedAppearance()
+    {
+        SetInputLocked(true);
+
+        if (digitText != null)
+        {
+            digitText.color = solvedDigitColor;
+            StageSpotlightMaterialUtility.ApplySpotlitText(digitText, solvedDigitColor, solvedDigitColor);
+        }
+
+        if (digitAnimator != null)
+        {
+            digitAnimator.RefreshVisualStyle();
+        }
+
+        if (incrementIndicator != null)
+        {
+            incrementIndicator.SetSolvedAppearance(true);
+        }
+
+        if (decrementIndicator != null)
+        {
+            decrementIndicator.SetSolvedAppearance(true);
+        }
+    }
+
     private bool ProcessSensor(SpotlightSensor sensor, ref float timer, int direction)
     {
+        if (inputLocked)
+        {
+            timer = 0f;
+            return false;
+        }
+
         if (sensor == null || !sensor.IsLit)
         {
             timer = 0f;

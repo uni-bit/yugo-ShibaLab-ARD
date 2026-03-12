@@ -7,8 +7,12 @@ public class Stage2CompletionSequence : MonoBehaviour
     private enum SequencePhase
     {
         Waiting,
+        DelayBeforeCollapse,
         Collapsing,
-        Brightening,
+        DelayAfterCollapse,
+        ExpandingLight,
+        DelayAfterLight,
+        SelfMove,
         Complete
     }
 
@@ -36,37 +40,57 @@ public class Stage2CompletionSequence : MonoBehaviour
     }
 
     [SerializeField] private Transform collapseRoot;
+    [SerializeField] private Transform[] collapseTargets = new Transform[0];
     [SerializeField] private Transform panelTransform;
     [SerializeField] private Transform stageRoot;
-    [SerializeField] private float collapseDuration = 1.15f;
+    [SerializeField] private float solvedPauseSeconds = 2f;
+    [SerializeField] private float lightExpandDuration = 0.75f;
+    [SerializeField] private float collapseDuration = 1.75f;
     [SerializeField] private Vector2 collapseHorizontalSpeedRange = new Vector2(0.9f, 2.6f);
     [SerializeField] private Vector2 collapseVerticalSpeedRange = new Vector2(0.8f, 2.1f);
     [SerializeField] private float collapseGravity = 4.8f;
     [SerializeField] private float collapseRotationSpeed = 240f;
     [SerializeField] private int collapseColumns = 4;
     [SerializeField] private int collapseRows = 3;
-    [SerializeField] private float brightenDuration = 3.2f;
-    [SerializeField] private float moveDistance = 6f;
-    [SerializeField] private float moveHeight = 0f;
+    [SerializeField] private float brightenDuration = 1.1f;
+    [SerializeField] private float delayAfterCollapseSeconds = 1.8f;
+    [SerializeField] private float delayAfterLightSeconds = 2f;
+    [SerializeField] private float selfMoveDuration = 3.6f;
+    [SerializeField] private float selfMoveDistance = 6f;
+    [SerializeField] private float selfMoveHeight = 0f;
     [SerializeField] private Color finalBrightnessColor = new Color(1f, 0.96f, 0.84f, 1f);
     [SerializeField] private float emissionBoost = 2.4f;
     [SerializeField] private float finalLightIntensity = 6f;
     [SerializeField] private float finalLightRange = 34f;
     [SerializeField] private float hiddenBrightenAlpha = 0.92f;
+    [SerializeField] private float expandedSpotAngle = 135f;
+    [SerializeField] private float expandedSpotRange = 110f;
+    [SerializeField] private float expandedSpotIntensity = 28f;
+    [SerializeField] private Color ambientTargetColor = new Color(0.85f, 0.8f, 0.68f, 1f);
+    [SerializeField] private float moveEndDarkenStartNormalized = 0.72f;
+    [SerializeField] private bool disableLightsDuringSelfMove = true;
+    [SerializeField] private bool advanceToStage3OnComplete = true;
+    [SerializeField] private int nextStageIndex = 2;
 
     private readonly List<CollapsePiece> collapsePieces = new List<CollapsePiece>();
     private readonly List<RendererState> rendererStates = new List<RendererState>();
 
     private SequencePhase currentPhase = SequencePhase.Waiting;
     private float phaseElapsed;
-    private Vector3 brightenStartPosition;
-    private Vector3 brightenTargetPosition;
+    private Vector3 selfMoveStartPosition;
+    private Vector3 selfMoveTargetPosition;
     private Vector3 travelDirection = Vector3.forward;
     private Light finalGlowLight;
     private Renderer panelRenderer;
     private Collider panelCollider;
+    private Light activeSpotLight;
+    private float initialSpotAngle;
+    private float initialSpotRange;
+    private float initialSpotIntensity;
+    private Color initialAmbientColor;
+    private Transform[] configuredCollapseTargets = new Transform[0];
 
-    public bool IsPlaying => currentPhase == SequencePhase.Collapsing || currentPhase == SequencePhase.Brightening;
+    public bool IsPlaying => currentPhase != SequencePhase.Waiting && currentPhase != SequencePhase.Complete;
     public bool IsComplete => currentPhase == SequencePhase.Complete;
 
     private void Awake()
@@ -91,22 +115,40 @@ public class Stage2CompletionSequence : MonoBehaviour
 
         switch (currentPhase)
         {
+            case SequencePhase.DelayBeforeCollapse:
+                UpdateDelayBeforeCollapse();
+                break;
+
             case SequencePhase.Collapsing:
                 UpdateCollapse();
                 break;
 
-            case SequencePhase.Brightening:
-                UpdateBrightening();
+            case SequencePhase.DelayAfterCollapse:
+                UpdateDelayAfterCollapse();
+                break;
+
+            case SequencePhase.ExpandingLight:
+                UpdateExpandingLight();
+                break;
+
+            case SequencePhase.DelayAfterLight:
+                UpdateDelayAfterLight();
+                break;
+
+            case SequencePhase.SelfMove:
+                UpdateSelfMove();
                 break;
         }
     }
 
     public void Configure(
         Transform collapseRootReference,
+        Transform[] collapseTargetsReference,
         Transform panelReference,
         Transform stageRootReference)
     {
         collapseRoot = collapseRootReference;
+        configuredCollapseTargets = collapseTargetsReference ?? new Transform[0];
         panelTransform = panelReference;
         stageRoot = stageRootReference != null ? stageRootReference : transform;
         panelRenderer = panelTransform != null ? panelTransform.GetComponent<Renderer>() : null;
@@ -121,7 +163,7 @@ public class Stage2CompletionSequence : MonoBehaviour
             return;
         }
 
-        BeginCollapse();
+        BeginDelayBeforeCollapse();
     }
 
     private void ResetSequenceState()
@@ -130,6 +172,16 @@ public class Stage2CompletionSequence : MonoBehaviour
         phaseElapsed = 0f;
         collapsePieces.Clear();
         rendererStates.Clear();
+        PoseTestBootstrap bootstrap = FindFirstObjectByType<PoseTestBootstrap>();
+        activeSpotLight = bootstrap != null ? bootstrap.ActiveSpotLight : null;
+        if (activeSpotLight != null)
+        {
+            initialSpotAngle = activeSpotLight.spotAngle;
+            initialSpotRange = activeSpotLight.range;
+            initialSpotIntensity = activeSpotLight.intensity;
+        }
+
+        initialAmbientColor = RenderSettings.ambientLight;
 
         if (panelRenderer != null)
         {
@@ -148,11 +200,76 @@ public class Stage2CompletionSequence : MonoBehaviour
         }
     }
 
+    private void BeginDelayBeforeCollapse()
+    {
+        currentPhase = SequencePhase.DelayBeforeCollapse;
+        phaseElapsed = 0f;
+        travelDirection = ResolveTravelDirection();
+        CaptureRendererStates();
+    }
+
+    private void UpdateDelayBeforeCollapse()
+    {
+        phaseElapsed += Time.deltaTime;
+        if (phaseElapsed >= solvedPauseSeconds)
+        {
+            BeginCollapse();
+        }
+    }
+
+    private void BeginExpandingLight()
+    {
+        currentPhase = SequencePhase.ExpandingLight;
+        phaseElapsed = 0f;
+        EnsureFinalGlowLight();
+        if (finalGlowLight != null)
+        {
+            finalGlowLight.enabled = true;
+            finalGlowLight.intensity = 0f;
+            finalGlowLight.range = finalLightRange;
+        }
+    }
+
+    private void UpdateExpandingLight()
+    {
+        phaseElapsed += Time.deltaTime;
+        float progress = Mathf.Clamp01(phaseElapsed / Mathf.Max(0.0001f, lightExpandDuration));
+        float eased = 1f - Mathf.Pow(1f - progress, 3f);
+
+        ApplyBrightening(eased);
+        UpdateExpandedLightState(eased);
+
+        if (progress >= 1f)
+        {
+            BeginDelayAfterLight();
+        }
+    }
+
+    private void BeginDelayAfterLight()
+    {
+        currentPhase = SequencePhase.DelayAfterLight;
+        phaseElapsed = 0f;
+        ApplyBrightening(1f);
+        UpdateExpandedLightState(1f);
+    }
+
+    private void UpdateDelayAfterLight()
+    {
+        phaseElapsed += Time.deltaTime;
+        ApplyBrightening(1f);
+        UpdateExpandedLightState(1f);
+
+        if (phaseElapsed >= delayAfterLightSeconds)
+        {
+            BeginSelfMove();
+        }
+    }
+
     private void BeginCollapse()
     {
         currentPhase = SequencePhase.Collapsing;
         phaseElapsed = 0f;
-        travelDirection = ResolveTravelDirection();
+        DisableCollapseTargetBehaviours();
         SpawnCollapsePieces();
     }
 
@@ -198,49 +315,53 @@ public class Stage2CompletionSequence : MonoBehaviour
             Destroy(collapseRoot.gameObject);
         }
 
-        BeginBrightening();
+        BeginDelayAfterCollapse();
     }
 
-    private void BeginBrightening()
+    private void BeginDelayAfterCollapse()
     {
-        currentPhase = SequencePhase.Brightening;
+        currentPhase = SequencePhase.DelayAfterCollapse;
         phaseElapsed = 0f;
-        CaptureRendererStates();
-
-        if (stageRoot == null)
-        {
-            stageRoot = transform;
-        }
-
-        brightenStartPosition = stageRoot != null ? stageRoot.position : transform.position;
-        brightenTargetPosition = brightenStartPosition + (travelDirection * moveDistance) + (Vector3.up * moveHeight);
-
-        EnsureFinalGlowLight();
-        if (finalGlowLight != null)
-        {
-            finalGlowLight.enabled = true;
-            finalGlowLight.intensity = 0f;
-            finalGlowLight.range = finalLightRange;
-        }
     }
 
-    private void UpdateBrightening()
+    private void UpdateDelayAfterCollapse()
     {
         phaseElapsed += Time.deltaTime;
-        float progress = Mathf.Clamp01(phaseElapsed / Mathf.Max(0.0001f, brightenDuration));
+
+        if (phaseElapsed >= delayAfterCollapseSeconds)
+        {
+            BeginExpandingLight();
+        }
+    }
+
+    private void BeginSelfMove()
+    {
+        currentPhase = SequencePhase.SelfMove;
+        phaseElapsed = 0f;
+        selfMoveStartPosition = stageRoot != null ? stageRoot.position : transform.position;
+        selfMoveTargetPosition = selfMoveStartPosition - (travelDirection * selfMoveDistance) + (Vector3.up * selfMoveHeight);
+
+        if (disableLightsDuringSelfMove)
+        {
+            SetMovementLightsEnabled(false);
+        }
+    }
+
+    private void UpdateSelfMove()
+    {
+        phaseElapsed += Time.deltaTime;
+        float progress = Mathf.Clamp01(phaseElapsed / Mathf.Max(0.0001f, selfMoveDuration));
         float eased = Mathf.SmoothStep(0f, 1f, progress);
+        float darkenProgress = Mathf.InverseLerp(moveEndDarkenStartNormalized, 1f, eased);
+        float brightnessProgress = 1f - Mathf.SmoothStep(0f, 1f, darkenProgress);
 
         if (stageRoot != null)
         {
-            stageRoot.position = Vector3.Lerp(brightenStartPosition, brightenTargetPosition, eased);
+            stageRoot.position = Vector3.Lerp(selfMoveStartPosition, selfMoveTargetPosition, eased);
         }
 
-        ApplyBrightening(eased);
-
-        if (finalGlowLight != null)
-        {
-            finalGlowLight.intensity = Mathf.Lerp(0f, finalLightIntensity, eased);
-        }
+        ApplyBrightening(brightnessProgress);
+        UpdateExpandedLightState(brightnessProgress);
 
         if (progress < 1f)
         {
@@ -248,6 +369,57 @@ public class Stage2CompletionSequence : MonoBehaviour
         }
 
         currentPhase = SequencePhase.Complete;
+
+        if (disableLightsDuringSelfMove)
+        {
+            RestorePrimaryLightState();
+        }
+
+        TransitionToNextStage();
+    }
+
+    private void SetMovementLightsEnabled(bool enabled)
+    {
+        if (activeSpotLight != null)
+        {
+            activeSpotLight.enabled = enabled;
+        }
+
+        if (finalGlowLight != null)
+        {
+            finalGlowLight.enabled = enabled && finalGlowLight.intensity > 0.0001f;
+        }
+    }
+
+    private void RestorePrimaryLightState()
+    {
+        if (activeSpotLight != null)
+        {
+            activeSpotLight.enabled = true;
+            activeSpotLight.spotAngle = initialSpotAngle;
+            activeSpotLight.range = initialSpotRange;
+            activeSpotLight.intensity = initialSpotIntensity;
+        }
+
+        if (finalGlowLight != null)
+        {
+            finalGlowLight.intensity = 0f;
+            finalGlowLight.enabled = false;
+        }
+    }
+
+    private void TransitionToNextStage()
+    {
+        if (!advanceToStage3OnComplete)
+        {
+            return;
+        }
+
+        StageSequenceController sequenceController = FindFirstObjectByType<StageSequenceController>();
+        if (sequenceController != null)
+        {
+            sequenceController.FadeToStage(nextStageIndex);
+        }
     }
 
     private Vector3 ResolveTravelDirection()
@@ -277,28 +449,38 @@ public class Stage2CompletionSequence : MonoBehaviour
     {
         collapsePieces.Clear();
 
-        if (collapseRoot == null)
+        Transform[] targets = GetEffectiveCollapseTargets();
+        if (targets.Length == 0)
         {
             return;
         }
 
-        Renderer[] renderers = collapseRoot.GetComponentsInChildren<Renderer>(true);
-        for (int index = 0; index < renderers.Length; index++)
+        for (int targetIndex = 0; targetIndex < targets.Length; targetIndex++)
         {
-            Renderer sourceRenderer = renderers[index];
-            if (sourceRenderer == null || sourceRenderer.transform == collapseRoot)
+            Transform targetRoot = targets[targetIndex];
+            if (targetRoot == null)
             {
                 continue;
             }
 
-            CreateCollapseProxy(sourceRenderer);
-
-            sourceRenderer.enabled = false;
-
-            Collider sourceCollider = sourceRenderer.GetComponent<Collider>();
-            if (sourceCollider != null)
+            Renderer[] renderers = targetRoot.GetComponentsInChildren<Renderer>(true);
+            for (int index = 0; index < renderers.Length; index++)
             {
-                sourceCollider.enabled = false;
+                Renderer sourceRenderer = renderers[index];
+                if (sourceRenderer == null)
+                {
+                    continue;
+                }
+
+                CreateCollapseProxy(sourceRenderer, targetRoot);
+
+                sourceRenderer.enabled = false;
+
+                Collider sourceCollider = sourceRenderer.GetComponent<Collider>();
+                if (sourceCollider != null)
+                {
+                    sourceCollider.enabled = false;
+                }
             }
         }
 
@@ -399,7 +581,7 @@ public class Stage2CompletionSequence : MonoBehaviour
         }
     }
 
-    private void CreateCollapseProxy(Renderer sourceRenderer)
+    private void CreateCollapseProxy(Renderer sourceRenderer, Transform targetRoot)
     {
         if (sourceRenderer == null)
         {
@@ -448,14 +630,20 @@ public class Stage2CompletionSequence : MonoBehaviour
             Destroy(proxyCollider);
         }
 
-        Vector3 centerOffset = bounds.center - collapseRoot.position;
-        Vector3 direction = collapseRoot.forward * 0.85f;
-        direction += collapseRoot.right * Mathf.Sign(centerOffset.x) * Mathf.Lerp(0.25f, 1.2f, Mathf.Clamp01(Mathf.Abs(centerOffset.x) / 3f));
-        direction += collapseRoot.up * Mathf.Lerp(0.15f, 0.75f, Mathf.Clamp01((centerOffset.y + 2f) / 4f));
+        Transform directionBasis = targetRoot != null ? targetRoot : collapseRoot;
+        if (directionBasis == null)
+        {
+            directionBasis = sourceRenderer.transform;
+        }
+
+        Vector3 centerOffset = bounds.center - directionBasis.position;
+        Vector3 direction = directionBasis.forward * 0.85f;
+        direction += directionBasis.right * Mathf.Sign(centerOffset.x) * Mathf.Lerp(0.25f, 1.2f, Mathf.Clamp01(Mathf.Abs(centerOffset.x) / 3f));
+        direction += directionBasis.up * Mathf.Lerp(0.15f, 0.75f, Mathf.Clamp01((centerOffset.y + 2f) / 4f));
 
         if (direction.sqrMagnitude <= 0.0001f)
         {
-            direction = collapseRoot.forward;
+            direction = directionBasis.forward;
         }
 
         direction.Normalize();
@@ -464,7 +652,7 @@ public class Stage2CompletionSequence : MonoBehaviour
         {
             Transform = proxyTransform,
             Velocity = direction * Random.Range(collapseHorizontalSpeedRange.x * 0.7f, collapseHorizontalSpeedRange.y * 1.15f)
-                + (collapseRoot.up * Random.Range(collapseVerticalSpeedRange.x * 0.8f, collapseVerticalSpeedRange.y * 1.2f)),
+                + (directionBasis.up * Random.Range(collapseVerticalSpeedRange.x * 0.8f, collapseVerticalSpeedRange.y * 1.2f)),
             AngularVelocity = new Vector3(
                 Random.Range(-collapseRotationSpeed, collapseRotationSpeed),
                 Random.Range(-collapseRotationSpeed, collapseRotationSpeed),
@@ -473,6 +661,148 @@ public class Stage2CompletionSequence : MonoBehaviour
         };
 
         collapsePieces.Add(piece);
+    }
+
+    private Transform[] GetEffectiveCollapseTargets()
+    {
+        List<Transform> validTargets = new List<Transform>();
+        AddResolvedCollapseTargets(validTargets, collapseTargets);
+        AddResolvedCollapseTargets(validTargets, configuredCollapseTargets);
+
+        if (validTargets.Count > 0)
+        {
+            return validTargets.ToArray();
+        }
+
+        return collapseRoot != null ? new[] { collapseRoot } : new Transform[0];
+    }
+
+    private void AddResolvedCollapseTargets(List<Transform> destination, Transform[] sourceTargets)
+    {
+        if (destination == null || sourceTargets == null)
+        {
+            return;
+        }
+
+        for (int index = 0; index < sourceTargets.Length; index++)
+        {
+            Transform[] resolvedTargets = ResolveCollapseTargetInstances(sourceTargets[index]);
+            for (int resolvedIndex = 0; resolvedIndex < resolvedTargets.Length; resolvedIndex++)
+            {
+                Transform resolvedTarget = resolvedTargets[resolvedIndex];
+                if (resolvedTarget != null && !destination.Contains(resolvedTarget))
+                {
+                    destination.Add(resolvedTarget);
+                }
+            }
+        }
+    }
+
+    private Transform[] ResolveCollapseTargetInstances(Transform target)
+    {
+        if (target == null)
+        {
+            return new Transform[0];
+        }
+
+        if (target.gameObject.scene.IsValid())
+        {
+            return new[] { target };
+        }
+
+        List<string> relativePath = BuildRelativePathFromAssetRoot(target);
+        if (relativePath.Count == 0)
+        {
+            return new Transform[0];
+        }
+
+        List<Transform> matches = new List<Transform>();
+        TryResolvePathUnderRoot(matches, collapseRoot, relativePath);
+        TryResolvePathUnderRoot(matches, stageRoot, relativePath);
+        return matches.ToArray();
+    }
+
+    private static List<string> BuildRelativePathFromAssetRoot(Transform target)
+    {
+        List<string> path = new List<string>();
+        Transform current = target;
+        while (current != null)
+        {
+            path.Insert(0, current.name);
+            current = current.parent;
+        }
+
+        return path;
+    }
+
+    private static void TryResolvePathUnderRoot(List<Transform> matches, Transform searchRoot, List<string> relativePath)
+    {
+        if (matches == null || searchRoot == null || relativePath == null || relativePath.Count == 0)
+        {
+            return;
+        }
+
+        Transform[] descendants = searchRoot.GetComponentsInChildren<Transform>(true);
+        for (int index = 0; index < descendants.Length; index++)
+        {
+            Transform candidate = descendants[index];
+            if (candidate == null || candidate.name != relativePath[0])
+            {
+                continue;
+            }
+
+            Transform resolved = TryFindDescendantByPath(candidate, relativePath, 1);
+            if (resolved != null && !matches.Contains(resolved))
+            {
+                matches.Add(resolved);
+            }
+        }
+    }
+
+    private static Transform TryFindDescendantByPath(Transform current, List<string> path, int pathIndex)
+    {
+        if (current == null)
+        {
+            return null;
+        }
+
+        if (pathIndex >= path.Count)
+        {
+            return current;
+        }
+
+        for (int childIndex = 0; childIndex < current.childCount; childIndex++)
+        {
+            Transform child = current.GetChild(childIndex);
+            if (child != null && child.name == path[pathIndex])
+            {
+                return TryFindDescendantByPath(child, path, pathIndex + 1);
+            }
+        }
+
+        return null;
+    }
+
+    private void DisableCollapseTargetBehaviours()
+    {
+        Transform[] targets = GetEffectiveCollapseTargets();
+        for (int targetIndex = 0; targetIndex < targets.Length; targetIndex++)
+        {
+            Transform target = targets[targetIndex];
+            if (target == null)
+            {
+                continue;
+            }
+
+            StageCodeFormulaDisplay[] formulaDisplays = target.GetComponentsInChildren<StageCodeFormulaDisplay>(true);
+            for (int index = 0; index < formulaDisplays.Length; index++)
+            {
+                if (formulaDisplays[index] != null)
+                {
+                    formulaDisplays[index].enabled = false;
+                }
+            }
+        }
     }
 
     private static Color ResolveRendererColor(Renderer sourceRenderer)
@@ -558,6 +888,7 @@ public class Stage2CompletionSequence : MonoBehaviour
     private void ApplyBrightening(float progress)
     {
         Color revealedHiddenColor = new Color(finalBrightnessColor.r, finalBrightnessColor.g, finalBrightnessColor.b, hiddenBrightenAlpha);
+        RenderSettings.ambientLight = Color.Lerp(initialAmbientColor, ambientTargetColor, progress);
 
         for (int index = 0; index < rendererStates.Count; index++)
         {
@@ -627,6 +958,21 @@ public class Stage2CompletionSequence : MonoBehaviour
                 sharedMaterial.SetColor("_EmissionColor", finalBrightnessColor * (progress * emissionBoost));
                 sharedMaterial.EnableKeyword("_EMISSION");
             }
+        }
+    }
+
+    private void UpdateExpandedLightState(float progress)
+    {
+        if (activeSpotLight != null)
+        {
+            activeSpotLight.spotAngle = Mathf.Lerp(initialSpotAngle, expandedSpotAngle, progress);
+            activeSpotLight.range = Mathf.Lerp(initialSpotRange, expandedSpotRange, progress);
+            activeSpotLight.intensity = Mathf.Lerp(initialSpotIntensity, expandedSpotIntensity, progress);
+        }
+
+        if (finalGlowLight != null)
+        {
+            finalGlowLight.intensity = Mathf.Lerp(0f, finalLightIntensity, progress);
         }
     }
 
