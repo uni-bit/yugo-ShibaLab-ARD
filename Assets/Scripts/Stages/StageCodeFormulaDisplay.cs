@@ -20,6 +20,7 @@ public class StageCodeFormulaDisplay : MonoBehaviour
     private const string SquareName = "Square Symbol";
     private const string EqualsName = "Formula Equals";
     private const string QuestionName = "Formula Question";
+    private const string FrameName = "Formula Frame";
 
     private static Material lineMaterial;
 
@@ -28,6 +29,7 @@ public class StageCodeFormulaDisplay : MonoBehaviour
     private LineRenderer squareRenderer;
     private TextMesh equalsText;
     private TextMesh questionText;
+    private LineRenderer frameRenderer;
 
     private void Reset()
     {
@@ -72,6 +74,7 @@ public class StageCodeFormulaDisplay : MonoBehaviour
         StageSpotlightMaterialUtility.ApplySpotlitLine(circleRenderer, hiddenDisplayColor, displayColor);
         StageSpotlightMaterialUtility.ApplySpotlitLine(triangleRenderer, hiddenDisplayColor, displayColor);
         StageSpotlightMaterialUtility.ApplySpotlitLine(squareRenderer, hiddenDisplayColor, displayColor);
+        StageSpotlightMaterialUtility.ApplySpotlitLine(frameRenderer, hiddenDisplayColor, displayColor);
 
         if (equalsText != null)
         {
@@ -113,12 +116,16 @@ public class StageCodeFormulaDisplay : MonoBehaviour
         squareRenderer = EnsureShapeRenderer(SquareName, out createdSquare);
         equalsText = EnsureFormulaText(EqualsName, out createdEquals);
         questionText = EnsureFormulaText(QuestionName, out createdQuestion);
+        frameRenderer = EnsureFrameRenderer(FrameName);
 
-        ConfigureCircle(circleRenderer, new Vector3(-2.1f, 0f, 0f));
-        ConfigureTriangle(triangleRenderer, new Vector3(-1.08f, -0.01f, 0f));
-        ConfigureSquare(squareRenderer, new Vector3(-0.04f, 0f, 0f));
-        ConfigureFormulaText(equalsText, "=", ApplyLayoutOffset(new Vector3(1.24f, 0f, 0f)), 0.09f, 180);
-        ConfigureFormulaText(questionText, "???", ApplyLayoutOffset(new Vector3(2.46f, 0f, 0f)), 0.09f, 180);
+        float spacing = 1.05f;
+        float startX = -2.1f;
+        ConfigureCircle(circleRenderer, new Vector3(startX + (spacing * 0f), 0f, 0f));
+        ConfigureTriangle(triangleRenderer, new Vector3(startX + (spacing * 1f), -0.01f, 0f));
+        ConfigureSquare(squareRenderer, new Vector3(startX + (spacing * 2f), 0f, 0f));
+        ConfigureFormulaText(equalsText, "=", ApplyLayoutOffset(new Vector3(startX + (spacing * 3f), 0f, 0f)), 0.09f, 180);
+        ConfigureFormulaText(questionText, "???", ApplyLayoutOffset(new Vector3(startX + (spacing * 4f), 0f, 0f)), 0.09f, 180);
+        ConfigureFrame(frameRenderer, ApplyLayoutOffset(new Vector3(0f, 0f, 0f)), new Vector2(6.2f, 1.45f), 0.04f);
 
         layoutInitialized = true;
 
@@ -194,6 +201,35 @@ public class StageCodeFormulaDisplay : MonoBehaviour
         return textMesh;
     }
 
+    private LineRenderer EnsureFrameRenderer(string childName)
+    {
+        Transform child = transform.Find(childName);
+        if (child == null)
+        {
+            child = new GameObject(childName).transform;
+            child.SetParent(transform, false);
+        }
+
+        LineRenderer renderer = child.GetComponent<LineRenderer>();
+        if (renderer == null)
+        {
+            renderer = child.gameObject.AddComponent<LineRenderer>();
+        }
+
+        renderer.useWorldSpace = false;
+        renderer.loop = false;
+        renderer.alignment = LineAlignment.View;
+        renderer.textureMode = LineTextureMode.Stretch;
+        renderer.numCapVertices = 2;
+        renderer.numCornerVertices = 2;
+        renderer.startWidth = 0.04f;
+        renderer.endWidth = 0.04f;
+        renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        renderer.receiveShadows = false;
+        renderer.sharedMaterial = GetLineMaterial();
+        return renderer;
+    }
+
     private void ConfigureCircle(LineRenderer renderer, Vector3 localPosition)
     {
         if (renderer == null)
@@ -245,6 +281,27 @@ public class StageCodeFormulaDisplay : MonoBehaviour
         renderer.SetPosition(2, new Vector3(0.24f, -0.24f, 0f) * symbolScale);
         renderer.SetPosition(3, new Vector3(0.24f, 0.24f, 0f) * symbolScale);
         renderer.SetPosition(4, new Vector3(-0.24f, 0.24f, 0f) * symbolScale);
+    }
+
+    private static void ConfigureFrame(LineRenderer renderer, Vector3 centerPosition, Vector2 size, float width)
+    {
+        if (renderer == null)
+        {
+            return;
+        }
+
+        renderer.transform.localPosition = centerPosition;
+        renderer.startWidth = width;
+        renderer.endWidth = width;
+        renderer.positionCount = 5;
+
+        float halfWidth = size.x * 0.5f;
+        float halfHeight = size.y * 0.5f;
+        renderer.SetPosition(0, new Vector3(-halfWidth, halfHeight, 0f));
+        renderer.SetPosition(1, new Vector3(halfWidth, halfHeight, 0f));
+        renderer.SetPosition(2, new Vector3(halfWidth, -halfHeight, 0f));
+        renderer.SetPosition(3, new Vector3(-halfWidth, -halfHeight, 0f));
+        renderer.SetPosition(4, new Vector3(-halfWidth, halfHeight, 0f));
     }
 
     private static void ConfigureFormulaText(TextMesh textMesh, string text, Vector3 localPosition, float characterSize, int fontSize)

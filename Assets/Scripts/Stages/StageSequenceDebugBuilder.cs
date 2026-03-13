@@ -4,6 +4,22 @@ using UnityEngine;
 using UnityEditor;
 #endif
 
+/// <summary>
+/// デバッグ用ステージ構成の自動生成を行う静的ユーティリティクラス。
+/// <para>
+/// <see cref="EnsureStageSetup"/> が中心的なエントリポイントで、<br/>
+/// <see cref="StageSequenceController"/> の Awake / OnValidate / SyncStageSetup から呼ばれる。
+/// </para>
+/// <para>
+/// 処理の流れ:
+/// <list type="number">
+/// <item>レガシー生成物の削除</item>
+/// <item>"Stage Setup" コンテナを FindOrCreate</item>
+/// <item>Stage1〜4 Root を FindOrCreate し <see cref="StageRootMarker"/> を付与</item>
+/// <item>各ステージ固有コンポーネント・GameObjectを EnsureStage1〜4 で補完</item>
+/// </list>
+/// </para>
+/// </summary>
 public static class StageSequenceDebugBuilder
 {
     private const string StageContainerName = "Stage Setup";
@@ -466,8 +482,8 @@ public static class StageSequenceDebugBuilder
 
         Transform contentRoot = FindOrCreateChildIfMissing(rigRoot, "Code Lock Content", new Vector3(0f, 1.1f, 7.72f));
 
-        Transform topTextRoot = FindOrCreateChildIfMissing(contentRoot, "Top Formula Root", new Vector3(-0.55f, 1.55f, 0f));
-        topTextRoot.localPosition = new Vector3(-0.55f, 1.55f, 0f);
+        Transform topTextRoot = FindOrCreateChildIfMissing(contentRoot, "Top Formula Root", new Vector3(-0.3f, 2.57f, 0f));
+        topTextRoot.localPosition = new Vector3(-0.3f, 2.57f, 0f);
         topTextRoot.localRotation = Quaternion.identity;
         RemoveLegacyFormulaContent(topTextRoot);
         RemoveComponentIfExists<FaceCameraBillboard>(topTextRoot.gameObject);
@@ -527,6 +543,7 @@ public static class StageSequenceDebugBuilder
             GameObject upButton = EnsureCodeLockButton(columnRoot, "Up Button", new Vector3(0f, 0.95f, 0f), "▲");
             GameObject display = EnsureCodeLockDisplay(columnRoot, "Digit Display", new Vector3(0f, 0f, 0f), "0");
             GameObject downButton = EnsureCodeLockButton(columnRoot, "Down Button", new Vector3(0f, -0.95f, 0f), "▼");
+            EnsureDigitSegmentBox(columnRoot, "Digit Segment", new Vector3(0f, 0f, -0.08f), new Vector3(1.3f, 0.88f, 0.08f));
 
             SpotlightSensor upSensor = EnsureSensor(upButton, upButton.transform, upButton.GetComponent<Renderer>(), upButton.GetComponent<Collider>());
             SpotlightSensor downSensor = EnsureSensor(downButton, downButton.transform, downButton.GetComponent<Renderer>(), downButton.GetComponent<Collider>());
@@ -557,7 +574,7 @@ public static class StageSequenceDebugBuilder
         codeLockPuzzle.Configure(columns, door.transform, topFormula, formulaDisplay, "834");
 
         StageSymbolNumberRevealPuzzle revealPuzzle = root.GetComponent<StageSymbolNumberRevealPuzzle>();
-        completionSequence.Configure(rigRoot, new[] { contentRoot, topTextRoot, door.transform }, panel.transform, root);
+        completionSequence.Configure(rigRoot, new[] { contentRoot, topTextRoot }, panel.transform, root);
         puzzleController.Configure(revealPuzzle, codeLockPuzzle, completionSequence);
     }
 
@@ -695,6 +712,30 @@ public static class StageSequenceDebugBuilder
         }
 
         return display;
+    }
+
+    private static GameObject EnsureDigitSegmentBox(Transform parent, string name, Vector3 localPosition, Vector3 localScale)
+    {
+        bool existed = parent.Find(name) != null;
+        GameObject segment = EnsurePrimitive(parent, name, PrimitiveType.Cube, localPosition, localScale);
+        if (!existed)
+        {
+            segment.transform.localPosition = localPosition;
+            segment.transform.localRotation = Quaternion.identity;
+            segment.transform.localScale = localScale;
+        }
+
+        SetRendererColor(segment, new Color(0.16f, 0.18f, 0.2f, 1f));
+        Renderer segmentRenderer = segment.GetComponent<Renderer>();
+        if (segmentRenderer != null)
+        {
+            StageSpotlightMaterialUtility.ApplySpotlitRenderer(
+                segmentRenderer,
+                new Color(0.25f, 0.35f, 0.45f, 0f),
+                new Color(0.88f, 0.95f, 1f, 1f));
+        }
+
+        return segment;
     }
 
     private static StageCodeLockButtonIndicator EnsureCodeLockButtonIndicator(Transform columnRoot, GameObject button, string arrowName, SpotlightSensor sensor)

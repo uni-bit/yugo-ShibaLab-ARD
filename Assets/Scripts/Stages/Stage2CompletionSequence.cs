@@ -1,6 +1,18 @@
 using System.Collections.Generic;
 using UnityEngine;
 
+/// <summary>
+/// Stage 2 完了時に再生される演出シーケンスコンポーネント。
+/// <para>
+/// <see cref="Play"/> を呼ぶと以下のフェーズを順次実行する:<br/>
+/// Waiting → DelayBeforeCollapse → Collapsing（パネル崩落）→ DelayAfterCollapse<br/>
+/// → ExpandingLight（ライト拡張・全体明転）→ DelayAfterLight → SelfMove（stage root 自走）→ Complete
+/// </para>
+/// <para>
+/// Complete フェーズで <see cref="StageSequenceController.FadeToStage"/> を呼び Stage 3 へ遷移する。<br/>
+/// <c>advanceToStage3OnComplete = false</c> にすると遷移をスキップできる。
+/// </para>
+/// </summary>
 [AddComponentMenu("Stages/Stage 2 Completion Sequence")]
 public class Stage2CompletionSequence : MonoBehaviour
 {
@@ -43,9 +55,9 @@ public class Stage2CompletionSequence : MonoBehaviour
     [SerializeField] private Transform[] collapseTargets = new Transform[0];
     [SerializeField] private Transform panelTransform;
     [SerializeField] private Transform stageRoot;
-    [SerializeField] private float solvedPauseSeconds = 2f;
+    [SerializeField] private float solvedPauseSeconds = 3.25f;
     [SerializeField] private float lightExpandDuration = 0.75f;
-    [SerializeField] private float collapseDuration = 1.75f;
+    [SerializeField] private float collapseDuration = 3.1f;
     [SerializeField] private Vector2 collapseHorizontalSpeedRange = new Vector2(0.9f, 2.6f);
     [SerializeField] private Vector2 collapseVerticalSpeedRange = new Vector2(0.8f, 2.1f);
     [SerializeField] private float collapseGravity = 4.8f;
@@ -58,6 +70,7 @@ public class Stage2CompletionSequence : MonoBehaviour
     [SerializeField] private float selfMoveDuration = 3.6f;
     [SerializeField] private float selfMoveDistance = 6f;
     [SerializeField] private float selfMoveHeight = 0f;
+    [SerializeField] private bool keepCollapsedDebrisUntilTransition = true;
     [SerializeField] private Color finalBrightnessColor = new Color(1f, 0.96f, 0.84f, 1f);
     [SerializeField] private float emissionBoost = 2.4f;
     [SerializeField] private float finalLightIntensity = 6f;
@@ -270,11 +283,6 @@ public class Stage2CompletionSequence : MonoBehaviour
     {
         currentPhase = SequencePhase.Collapsing;
         phaseElapsed = 0f;
-        ResolveCodeLockPuzzle();
-        if (codeLockPuzzle != null)
-        {
-            codeLockPuzzle.DisableSolvedGlowForCollapse();
-        }
         DisableCollapseTargetBehaviours();
         SpawnCollapsePieces();
     }
@@ -320,17 +328,20 @@ public class Stage2CompletionSequence : MonoBehaviour
             return;
         }
 
-        for (int index = 0; index < collapsePieces.Count; index++)
+        if (!keepCollapsedDebrisUntilTransition)
         {
-            if (collapsePieces[index] != null && collapsePieces[index].Transform != null)
+            for (int index = 0; index < collapsePieces.Count; index++)
             {
-                Destroy(collapsePieces[index].Transform.gameObject);
+                if (collapsePieces[index] != null && collapsePieces[index].Transform != null)
+                {
+                    Destroy(collapsePieces[index].Transform.gameObject);
+                }
             }
+
+            collapsePieces.Clear();
         }
 
-        collapsePieces.Clear();
-
-        if (collapseRoot != null)
+        if (!keepCollapsedDebrisUntilTransition && collapseRoot != null)
         {
             Destroy(collapseRoot.gameObject);
         }

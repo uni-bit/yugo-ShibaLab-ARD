@@ -4,6 +4,17 @@ using UnityEngine;
 using UnityEditor;
 #endif
 
+/// <summary>
+/// Stage 1〜4 の root を管理し、表示ステージを切り替えるコントローラー。
+/// <para>
+/// <see cref="SetStage(int)"/>: 即座にステージを切り替える。<br/>
+/// <see cref="FadeToStage(int)"/>: <see cref="StageTransitionFader"/> によるフェード付き遷移（Play Mode のみ）。
+/// </para>
+/// <para>
+/// <see cref="StageSequenceDebugBuilder.EnsureStageSetup"/> で不足ステージを自動補完する。<br/>
+/// <c>autoSyncStageSetup = true</c> のとき、OnValidate / Awake のたびに自動同期が走る。
+/// </para>
+/// </summary>
 [AddComponentMenu("Stages/Stage Sequence Controller")]
 public class StageSequenceController : MonoBehaviour
 {
@@ -81,32 +92,28 @@ public class StageSequenceController : MonoBehaviour
             RefreshActiveStageState();
         }
 
-        if (!allowKeyboardShortcuts)
-        {
-            return;
-        }
-
-        if (Input.GetKeyDown(previousStageKey))
+        if (allowKeyboardShortcuts && Input.GetKeyDown(previousStageKey))
         {
             PreviousStage();
         }
-        else if (Input.GetKeyDown(nextStageKey))
+        else if (allowKeyboardShortcuts && Input.GetKeyDown(nextStageKey))
         {
             NextStage();
         }
-        else if (Input.GetKeyDown(stage1Key))
+
+        if (Input.GetKeyDown(stage1Key) || Input.GetKeyDown(KeyCode.Keypad1))
         {
             SetStage(0);
         }
-        else if (Input.GetKeyDown(stage2Key))
+        else if (Input.GetKeyDown(stage2Key) || Input.GetKeyDown(KeyCode.Keypad2))
         {
             SetStage(1);
         }
-        else if (Input.GetKeyDown(stage3Key))
+        else if (Input.GetKeyDown(stage3Key) || Input.GetKeyDown(KeyCode.Keypad3))
         {
             SetStage(2);
         }
-        else if (Input.GetKeyDown(stage4Key))
+        else if (Input.GetKeyDown(stage4Key) || Input.GetKeyDown(KeyCode.Keypad4))
         {
             SetStage(3);
         }

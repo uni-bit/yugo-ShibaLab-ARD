@@ -1,5 +1,19 @@
 using UnityEngine;
 
+/// <summary>
+/// Stage 2 後半のコードロックパズルコンポーネント。
+/// <para>
+/// 3 桁のダイヤル (<see cref="StageLightCodeDialColumn"/>) をライトで操作し、<br/>
+/// <see cref="TargetCode"/>（デフォルト <c>"834"</c>）と一致したとき <see cref="IsSolved"/> が <c>true</c> になる。
+/// </para>
+/// <para>
+/// 解除フロー: 一致検出 → <see cref="ApplySolvedVisualState"/> で式ラベル色変更・ドア枠発光 →<br/>
+/// ドアが <see cref="openLocalOffset"/> 方向へアニメーション移動する。
+/// </para>
+/// <para>
+/// このコンポーネントは Stage 2 専用です。Stage 3 / Stage 4 には使用されていません。
+/// </para>
+/// </summary>
 [AddComponentMenu("Stages/Stage 3 Code Lock Puzzle")]
 public class StageLightCodeLockPuzzle : MonoBehaviour
 {
@@ -295,7 +309,7 @@ public class StageLightCodeLockPuzzle : MonoBehaviour
                 glowLightTransform.SetParent(doorTransform, false);
             }
 
-            glowLightTransform.position = bounds.center - (doorTransform.forward * 0.25f);
+            glowLightTransform.position = bounds.center - (doorTransform.forward * 0.25f) + Vector3.up;
             glowLightTransform.rotation = Quaternion.identity;
 
             doorGlowLight = glowLightTransform.GetComponent<Light>();

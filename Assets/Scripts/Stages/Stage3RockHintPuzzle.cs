@@ -1,8 +1,24 @@
 using UnityEngine;
 
+/// <summary>
+/// Stage 3 / Stage 4 のカラーヒントロックパズルコンポーネント（両ステージ共通）。
+/// <para>
+/// 緑ヒント岩と青ヒント岩を、それぞれ <c>hintHoldSeconds</c> 秒間スポットライトの中心ゾーンで照射すると<br/>
+/// 該当色の台座岩が発光し、両方活性化するとフィナーレに移行する。
+/// </para>
+/// <para>
+/// フィナーレフェーズ: LocalReveal → PanoramaReveal（全体明転）→ HoldBeforeTransition → Complete<br/>
+/// Complete 時、<c>advanceToNextStageOnComplete = true</c> なら <see cref="StageSequenceController.FadeToStage"/> で次ステージへ遷移する。
+/// </para>
+/// <para>
+/// Stage 3 は次ステージあり（Stage 4 へ）、Stage 4 は最終ステージ（遷移なし）として使用されている。
+/// </para>
+/// </summary>
 [AddComponentMenu("Stages/Stage 3 Rock Hint Puzzle")]
 public class Stage3RockHintPuzzle : MonoBehaviour
 {
+    private const string EmissiveShellName = "Stage3 Emissive Shell";
+
     private enum FinalePhase
     {
         None,
@@ -33,6 +49,7 @@ public class Stage3RockHintPuzzle : MonoBehaviour
     [SerializeField] private float emissiveShellAlpha = 0.72f;
     [SerializeField] private float hintHoldSeconds = 1f;
     [SerializeField] private float hintActivationExposureThreshold = 0.045f;
+    [SerializeField, Range(0.05f, 1f)] private float hintCenterZoneNormalizedRadius = 0.35f;
     [SerializeField] private float localRevealDuration = 2f;
     [SerializeField] private float brightenDuration = 1.1f;
     [SerializeField] private float holdBeforeStageTransitionSeconds = 1f;
@@ -266,7 +283,27 @@ public class Stage3RockHintPuzzle : MonoBehaviour
             return false;
         }
 
-        return sensor.IsLit || sensor.Exposure01 >= hintActivationExposureThreshold;
+        if (!(sensor.IsLit || sensor.Exposure01 >= hintActivationExposureThreshold))
+        {
+            return false;
+        }
+
+        Light sourceLight = sensor.SourceLight;
+        if (sourceLight == null || sourceLight.type != LightType.Spot || sourceLight.spotAngle <= 0.001f)
+        {
+            return false;
+        }
+
+        Vector3 toTarget = sensor.transform.position - sourceLight.transform.position;
+        if (toTarget.sqrMagnitude <= 0.000001f)
+        {
+            return false;
+        }
+
+        float angleToTarget = Vector3.Angle(sourceLight.transform.forward, toTarget.normalized);
+        float halfAngle = sourceLight.spotAngle * 0.5f;
+        float normalized = angleToTarget / Mathf.Max(halfAngle, 0.0001f);
+        return normalized <= hintCenterZoneNormalizedRadius;
     }
 
     private void UpdateFinale()
@@ -408,6 +445,8 @@ public class Stage3RockHintPuzzle : MonoBehaviour
             visualCache.Renderers = rockRoot.GetComponentsInChildren<Renderer>(true);
         }
 
+        CleanupNestedEmissiveShells(rockRoot);
+
         if (visualCache.EmissiveShellRenderers == null || visualCache.EmissiveShellRenderers.Length == 0)
         {
             EnsureEmissiveShells(rockRoot, visualCache);
@@ -469,10 +508,15 @@ public class Stage3RockHintPuzzle : MonoBehaviour
             }
 
             Transform sourceTransform = sourceFilter.transform;
-            Transform shellTransform = sourceTransform.Find("Stage3 Emissive Shell");
+            if (sourceTransform.name == EmissiveShellName)
+            {
+                continue;
+            }
+
+            Transform shellTransform = sourceTransform.Find(EmissiveShellName);
             if (shellTransform == null)
             {
-                shellTransform = new GameObject("Stage3 Emissive Shell").transform;
+                shellTransform = new GameObject(EmissiveShellName).transform;
                 shellTransform.SetParent(sourceTransform, false);
             }
 
@@ -503,6 +547,36 @@ public class Stage3RockHintPuzzle : MonoBehaviour
         }
 
         visualCache.EmissiveShellRenderers = shellRenderers.ToArray();
+    }
+
+    private void CleanupNestedEmissiveShells(Transform rockRoot)
+    {
+        if (rockRoot == null)
+        {
+            return;
+        }
+
+        Transform[] descendants = rockRoot.GetComponentsInChildren<Transform>(true);
+        for (int index = 0; index < descendants.Length; index++)
+        {
+            Transform descendant = descendants[index];
+            if (descendant == null || descendant == rockRoot || descendant.name != EmissiveShellName)
+            {
+                continue;
+            }
+
+            if (descendant.parent != null && descendant.parent.name == EmissiveShellName)
+            {
+                if (Application.isPlaying)
+                {
+                    Destroy(descendant.gameObject);
+                }
+                else
+                {
+                    DestroyImmediate(descendant.gameObject);
+                }
+            }
+        }
     }
 
     private Material GetOrCreateEmissiveShellMaterial(string sourceName)

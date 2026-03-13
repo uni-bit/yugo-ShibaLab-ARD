@@ -1,6 +1,7 @@
+// [LEGACY] このスクリプトは旧実装の誤用防止用スタブです。アタッチしないでください。
 using UnityEngine;
 
-[AddComponentMenu("Legacy/New Mono Behaviour Script")]
+[AddComponentMenu("_Legacy/New Mono Behaviour Script (Stub)")]
 public class NewMonoBehaviourScript : MonoBehaviour
 {
     private void Awake()

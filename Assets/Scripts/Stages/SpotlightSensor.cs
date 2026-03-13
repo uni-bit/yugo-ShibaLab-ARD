@@ -1,5 +1,16 @@
 using UnityEngine;
 
+/// <summary>
+/// スポットライトからの照射量を毎フレーム計算するセンサーコンポーネント。
+/// <para>
+/// <see cref="IsLit"/>: <see cref="Exposure01"/> が <c>activationThreshold</c> 以上のとき <c>true</c>。<br/>
+/// <see cref="Exposure01"/>: 0〜1 の露出量。角度と距離によるフォールオフを合成した値。
+/// </para>
+/// <para>
+/// <see cref="PoseTestBootstrap.ActiveSpotLight"/> を自動解決するため、<br/>
+/// <see cref="PoseTestBootstrap"/> がシーンに存在していれば手動設定不要。
+/// </para>
+/// </summary>
 [AddComponentMenu("Stages/Spotlight Sensor")]
 public class SpotlightSensor : MonoBehaviour
 {

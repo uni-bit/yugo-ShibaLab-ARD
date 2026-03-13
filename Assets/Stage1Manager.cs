@@ -1,6 +1,10 @@
+// [LEGACY] このスクリプトはクリック操作ベースの旧 Stage1 実装です。
+// 現行の Stage 1 ギミックは Assets/Scripts/Stages/StageLightOrderedPuzzle.cs を使用してください。
+// このファイルは参照用として残してありますが、通常は使用しません。
 using UnityEngine;
 using System.Collections;
 
+[AddComponentMenu("_Legacy/Stage1Manager (Deprecated)")]
 public class Stage1Manager : MonoBehaviour
 {
     [Header("生き物オブジェクト")]
