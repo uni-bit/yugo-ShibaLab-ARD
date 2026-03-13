@@ -35,9 +35,11 @@ public class UdpQuaternionReceiver : MonoBehaviour
     [SerializeField] private bool convertRightHandedToLeftHanded = true;
     [SerializeField] private Vector3 sensorToUnityEulerOffset = Vector3.zero;
     [SerializeField] private bool stabilizeQuaternionHemisphere = true;
+    [Tooltip("スマホ画面を下向き（face-down）にして使う場合はtrue。座標軸の左右反転を補正します。")]
+    [SerializeField] private bool screenFaceDown = true;
 
     [Header("Touch Input")]
-    [SerializeField] private float touchRecenterCooldownSeconds = 0.6f;
+    [SerializeField] private float touchRecenterCooldownSeconds = 0.8f;
 
     private readonly object syncRoot = new object();
     private static readonly Regex FloatRegex = new Regex(@"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?", RegexOptions.Compiled);
@@ -57,16 +59,21 @@ public class UdpQuaternionReceiver : MonoBehaviour
     private bool hasZ;
     private bool hasW;
     private DateTime lastTouchRecenterTime = DateTime.MinValue;
+    private DateTime lastTouchPacketTime = DateTime.MinValue;
     private bool touchInputActive;
     private int recenterRequestCount;
     private int pendingRecenterRequests;
+    private int touchPacketCount;
 
     public Quaternion LatestRawRotation { get; private set; } = Quaternion.identity;
     public Quaternion LatestStabilizedRawRotation { get; private set; } = Quaternion.identity;
     public Quaternion LatestConvertedRotation { get; private set; } = Quaternion.identity;
     public QuaternionCoordinatePreset CoordinatePreset => coordinatePreset;
+    public bool ScreenFaceDown => screenFaceDown;
     public int ReceivedPacketCount { get; private set; }
     public int RecenterRequestCount => Volatile.Read(ref recenterRequestCount);
+    public int TouchPacketCount => Volatile.Read(ref touchPacketCount);
+    public string LastTouchStatus { get; private set; } = "No touch received";
     public DateTime LastRecenterTime { get; private set; } = DateTime.MinValue;
     public string LastSender { get; private set; } = "-";
     public string LastStatus { get; private set; } = "Waiting for UDP packets...";
@@ -249,7 +256,8 @@ public class UdpQuaternionReceiver : MonoBehaviour
                     rawQuaternion,
                     coordinatePreset,
                     sensorToUnityEulerOffset,
-                    convertRightHandedToLeftHanded);
+                    convertRightHandedToLeftHanded,
+                    screenFaceDown);
 
                 lock (syncRoot)
                 {
@@ -920,25 +928,41 @@ public class UdpQuaternionReceiver : MonoBehaviour
                 return false;
             }
 
-            if (touchInputActive)
+            Interlocked.Increment(ref touchPacketCount);
+
+            DateTime now = DateTime.UtcNow;
+            double secondsSinceTouchPacket = lastTouchPacketTime == DateTime.MinValue
+                ? double.MaxValue
+                : (now - lastTouchPacketTime).TotalSeconds;
+            lastTouchPacketTime = now;
+
+            // Merge x/y pair packets and tiny OSC bursts into one recenter request.
+            if (secondsSinceTouchPacket < 0.12d)
             {
+                LastTouchStatus = string.Format(
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    "Touch detected (debounce {0:F3}s < 0.12s)",
+                    secondsSinceTouchPacket);
                 return false;
             }
 
-            touchInputActive = true;
-
-            DateTime now = DateTime.UtcNow;
             double secondsSinceLastTrigger = lastTouchRecenterTime == DateTime.MinValue
                 ? double.MaxValue
                 : (now - lastTouchRecenterTime).TotalSeconds;
 
             if (secondsSinceLastTrigger < touchRecenterCooldownSeconds)
             {
+                LastTouchStatus = string.Format(
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    "Touch detected (cooldown {0:F2}s / {1:F2}s)",
+                    secondsSinceLastTrigger,
+                    touchRecenterCooldownSeconds);
                 return false;
             }
 
             lastTouchRecenterTime = now;
             LastRecenterTime = DateTime.Now;
+            LastTouchStatus = "Recenter triggered by touch!";
             Interlocked.Increment(ref recenterRequestCount);
             Interlocked.Increment(ref pendingRecenterRequests);
             return true;
@@ -950,6 +974,58 @@ public class UdpQuaternionReceiver : MonoBehaviour
         if (!AddressLooksLikeTouch(message.Address))
         {
             return false;
+        }
+
+        string normalizedAddress = string.IsNullOrEmpty(message.Address)
+            ? string.Empty
+            : message.Address.Trim().ToLowerInvariant().Replace("\\", "/").Replace(":", "/");
+
+        // ZIG SIM touch format: /(deviceUUID)/touch(touchId)1  (X position, float)
+        //                       /(deviceUUID)/touch(touchId)2  (Y position, float)
+        //                       /(deviceUUID)/touchradius(touchId)
+        //                       /(deviceUUID)/touchforce(touchId)
+        // When a finger is touching, these messages are sent every frame.
+        // When no finger is touching, these messages are NOT sent at all.
+        // Therefore: receiving any touch/touchradius/touchforce message = active touch.
+        if (IsZigSimTouchAddress(normalizedAddress))
+        {
+            // touchforce with value 0 means no force (but finger IS touching)
+            // touchradius presence always means touch is active
+            // touch position (1 float) always means touch is active
+            if (normalizedAddress.Contains("touchforce"))
+            {
+                return message.FloatArguments != null
+                    && message.FloatArguments.Count > 0
+                    && message.FloatArguments[0] > 0.0001f;
+            }
+            return true;
+        }
+
+        // TUIO-style touch stream (/tuio/2Dcur):
+        //   set  -> active touch sample
+        //   alive with ids -> active while finger exists
+        //   alive only -> no active touches
+        //   fseq -> frame sequence marker only
+        if (normalizedAddress.Contains("2dcur") || normalizedAddress.Contains("/tuio/"))
+        {
+            if (message.DebugArguments != null && message.DebugArguments.Count > 0)
+            {
+                string first = message.DebugArguments[0];
+                if (string.Equals(first, "\"set\"", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+
+                if (string.Equals(first, "\"alive\"", StringComparison.OrdinalIgnoreCase))
+                {
+                    return message.DebugArguments.Count > 1;
+                }
+
+                if (string.Equals(first, "\"fseq\"", StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+            }
         }
 
         if (!string.IsNullOrEmpty(message.TypeTags))
@@ -987,7 +1063,7 @@ public class UdpQuaternionReceiver : MonoBehaviour
                 || message.TypeTags.IndexOf('s') >= 0
                 || message.TypeTags.IndexOf('b') >= 0))
         {
-            return true;
+            return message.DebugArguments != null && message.DebugArguments.Count > 0;
         }
 
         if (message.DebugArguments != null && message.DebugArguments.Count > 0)
@@ -996,6 +1072,31 @@ public class UdpQuaternionReceiver : MonoBehaviour
         }
 
         return true;
+    }
+
+    // ZIG SIM touch address pattern: /(uuid)/touch(id)1 or /touch(id)2
+    // Also matches: /(uuid)/touchradius(id), /(uuid)/touchforce(id)
+    // The last path segment starts with "touch" and contains a digit suffix.
+    private static bool IsZigSimTouchAddress(string normalizedAddress)
+    {
+        if (string.IsNullOrEmpty(normalizedAddress))
+        {
+            return false;
+        }
+
+        int lastSlash = normalizedAddress.LastIndexOf('/');
+        string lastSegment = lastSlash >= 0
+            ? normalizedAddress.Substring(lastSlash + 1)
+            : normalizedAddress;
+
+        if (!lastSegment.StartsWith("touch", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        // Confirm it looks like ZIG SIM: touch(id)1, touch(id)2, touchradius(id), touchforce(id)
+        // i.e. "touch" followed by at least one more character (digit or keyword)
+        return lastSegment.Length > 5;
     }
 
     private static bool AddressLooksLikeTouch(string address)
@@ -1010,12 +1111,21 @@ public class UdpQuaternionReceiver : MonoBehaviour
         normalized = normalized.Replace(":", "/");
         normalized = normalized.Trim('/');
 
+        // ZIG SIM touch address: last segment starts with "touch" and has suffix
+        if (IsZigSimTouchAddress(normalized))
+        {
+            return true;
+        }
+
         string[] parts = normalized.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
         for (int index = 0; index < parts.Length; index++)
         {
             string part = parts[index];
             if (part.Contains("touch")
                 || part.Contains("2d")
+                || part.Contains("tuio")
+                || part.Contains("mti")
+                || part.Contains("touches")
                 || part.Contains("pointer")
                 || part.Contains("tap"))
             {
@@ -1025,6 +1135,9 @@ public class UdpQuaternionReceiver : MonoBehaviour
 
         return normalized.Contains("touch")
             || normalized.Contains("2d")
+            || normalized.Contains("tuio")
+            || normalized.Contains("mti")
+            || normalized.Contains("touches")
             || normalized.Contains("pointer")
             || normalized.Contains("tap");
     }

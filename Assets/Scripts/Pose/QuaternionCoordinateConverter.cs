@@ -35,7 +35,8 @@ public static class QuaternionCoordinateConverter
         Quaternion sensorQuaternion,
         QuaternionCoordinatePreset coordinatePreset,
         Vector3 eulerOffset,
-        bool convertHandedness = true)
+        bool convertHandedness = true,
+        bool screenFaceDown = false)
     {
         Quaternion normalizedSensor = NormalizeQuaternion(sensorQuaternion);
 
@@ -49,8 +50,8 @@ public static class QuaternionCoordinateConverter
         }
 
         Quaternion unityRotation = coordinatePreset == QuaternionCoordinatePreset.IPhoneCoreMotion
-            ? ConvertIPhoneCoreMotion(normalizedSensor, convertHandedness)
-            : (convertHandedness ? ConvertHandedness(normalizedSensor, coordinatePreset) : normalizedSensor);
+            ? ConvertIPhoneCoreMotion(normalizedSensor, convertHandedness, screenFaceDown)
+            : (convertHandedness ? ConvertHandedness(normalizedSensor, coordinatePreset, screenFaceDown) : normalizedSensor);
 
         if (unityRotation.x == 0f
             && unityRotation.y == 0f
@@ -109,11 +110,20 @@ public static class QuaternionCoordinateConverter
             quaternion.w * inverseMagnitude);
     }
 
-    private static Quaternion ConvertHandedness(Quaternion sensorQuaternion, QuaternionCoordinatePreset coordinatePreset)
+    private static Quaternion ConvertHandedness(Quaternion sensorQuaternion, QuaternionCoordinatePreset coordinatePreset, bool screenFaceDown = false)
     {
+        // Android RotationVector: ENU right-handed (X=East, Y=North, Z=Up)
+        // Convert to Unity left-handed (X=right, Y=up, Z=forward) via Z-axis negation.
+        // When screen is face-down, the device Z-axis (screen normal) points downward,
+        // so we additionally negate X to maintain correct left/right mapping.
         switch (coordinatePreset)
         {
             case QuaternionCoordinatePreset.AndroidRotationVector:
+                if (screenFaceDown)
+                {
+                    // Face-down correction: negate X to fix left/right inversion
+                    return new Quaternion(-sensorQuaternion.x, sensorQuaternion.y, -sensorQuaternion.z, -sensorQuaternion.w);
+                }
                 return new Quaternion(sensorQuaternion.x, sensorQuaternion.y, -sensorQuaternion.z, -sensorQuaternion.w);
 
             case QuaternionCoordinatePreset.IPhoneCoreMotion:
@@ -122,7 +132,7 @@ public static class QuaternionCoordinateConverter
         }
     }
 
-    private static Quaternion ConvertIPhoneCoreMotion(Quaternion sensorQuaternion, bool convertHandedness)
+    private static Quaternion ConvertIPhoneCoreMotion(Quaternion sensorQuaternion, bool convertHandedness, bool screenFaceDown = false)
     {
         if (!convertHandedness)
         {
@@ -142,6 +152,17 @@ public static class QuaternionCoordinateConverter
         // +X = screen right, +Y = screen top, +Z = out of the screen.
         // The rig expects +Z to point along the handset top direction so roll
         // becomes a twist around the ray instead of lateral spotlight motion.
+        //
+        // When screen is face-down, the device is physically flipped 180° around
+        // the Y-axis (top-bottom). The "up" direction of the pointer should still
+        // be the handset top, but left/right must be mirrored to compensate.
+        // We mirror by negating the device right axis used as the up-vector hint.
+        if (screenFaceDown)
+        {
+            // Negate right axis to correct left/right inversion when face-down
+            return Quaternion.LookRotation(deviceTop.normalized, deviceScreenOut.normalized);
+        }
+
         return Quaternion.LookRotation(deviceTop.normalized, -deviceScreenOut.normalized);
     }
 
