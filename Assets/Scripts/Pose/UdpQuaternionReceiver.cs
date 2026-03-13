@@ -869,7 +869,20 @@ public class UdpQuaternionReceiver : MonoBehaviour
             return message.FloatArguments[0] > 0.5f;
         }
 
-        return false;
+        if (!string.IsNullOrEmpty(message.TypeTags)
+            && (message.TypeTags.IndexOf('i') >= 0
+                || message.TypeTags.IndexOf('s') >= 0
+                || message.TypeTags.IndexOf('b') >= 0))
+        {
+            return true;
+        }
+
+        if (message.DebugArguments != null && message.DebugArguments.Count > 0)
+        {
+            return true;
+        }
+
+        return true;
     }
 
     private static bool AddressLooksLikeTouch(string address)

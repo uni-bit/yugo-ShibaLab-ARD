@@ -4,6 +4,22 @@ using UnityEngine;
 using UnityEditor;
 #endif
 
+/// <summary>
+/// デバッグ用ステージ構成の自動生成を行う静的ユーティリティクラス。
+/// <para>
+/// <see cref="EnsureStageSetup"/> が中心的なエントリポイントで、<br/>
+/// <see cref="StageSequenceController"/> の Awake / OnValidate / SyncStageSetup から呼ばれる。
+/// </para>
+/// <para>
+/// 処理の流れ:
+/// <list type="number">
+/// <item>レガシー生成物の削除</item>
+/// <item>"Stage Setup" コンテナを FindOrCreate</item>
+/// <item>Stage1〜4 Root を FindOrCreate し <see cref="StageRootMarker"/> を付与</item>
+/// <item>各ステージ固有コンポーネント・GameObjectを EnsureStage1〜4 で補完</item>
+/// </list>
+/// </para>
+/// </summary>
 public static class StageSequenceDebugBuilder
 {
     private const string StageContainerName = "Stage Setup";
@@ -557,7 +573,7 @@ public static class StageSequenceDebugBuilder
         codeLockPuzzle.Configure(columns, door.transform, topFormula, formulaDisplay, "834");
 
         StageSymbolNumberRevealPuzzle revealPuzzle = root.GetComponent<StageSymbolNumberRevealPuzzle>();
-        completionSequence.Configure(rigRoot, new[] { contentRoot, topTextRoot, door.transform }, panel.transform, root);
+        completionSequence.Configure(rigRoot, new[] { contentRoot, topTextRoot }, panel.transform, root);
         puzzleController.Configure(revealPuzzle, codeLockPuzzle, completionSequence);
     }
 

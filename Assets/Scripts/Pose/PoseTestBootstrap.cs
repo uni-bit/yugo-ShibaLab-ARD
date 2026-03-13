@@ -9,6 +9,22 @@ using UnityEngine.InputSystem;
 using UnityEditor;
 #endif
 
+/// <summary>
+/// 投影リグを実行時に自動構築するブートストラップコンポーネント。
+/// <para>
+/// 主な役割:
+/// <list type="bullet">
+/// <item>Front/Left の 2 面投影サーフェスと OffAxisProjection カメラの生成</item>
+/// <item>ZIG SIM 由来の姿勢入力を受けるスポットライトの生成と <see cref="ActiveSpotLight"/> としての公開</item>
+/// <item>実行時の黒背景化・他ライト無効化</item>
+/// <item>シェーダーグローバル変数 (_StageSpotlightPosition 等) の毎フレーム更新</item>
+/// </list>
+/// </para>
+/// <para>
+/// ステージ側は <see cref="ActiveSpotLight"/> を参照して <see cref="Stages.SpotlightSensor"/> のライト源とします。
+/// <see cref="StageSequenceController"/> も <c>FindFirstObjectByType</c> でこのコンポーネントを取得します。
+/// </para>
+/// </summary>
 [ExecuteAlways]
 [RequireComponent(typeof(UdpQuaternionReceiver))]
 [RequireComponent(typeof(PoseCalibrationCoordinator))]
@@ -22,10 +38,10 @@ public class PoseTestBootstrap : MonoBehaviour
     private const string ViewerOriginName = "Viewer Origin";
     private const string RotationPivotName = "Rotation Pivot";
     private static readonly string[] PointerVisualNames = { "Pointer Shaft", "Pointer Head", "Pointer Tail" };
-    private const float ScreenDistance = 3f;
-    private const float ScreenHeightWorld = 3f;
-    private const float ViewerHeight = 0.4f;
-    private const float FrontScreenWidth = ScreenHeightWorld * (1920f / 1080f);
+    private const float FrontScreenWidth = 2.30f;
+    private const float ScreenDistance = FrontScreenWidth * 0.5f;
+    private const float ScreenHeightWorld = FrontScreenWidth * (1080f / 1920f);
+    private const float ViewerHeight = 0f;
     private const int WindowedDefaultWidth = 1920;
     private const int WindowedDefaultHeight = 1080;
 

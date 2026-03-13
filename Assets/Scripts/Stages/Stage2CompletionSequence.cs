@@ -1,6 +1,18 @@
 using System.Collections.Generic;
 using UnityEngine;
 
+/// <summary>
+/// Stage 2 完了時に再生される演出シーケンスコンポーネント。
+/// <para>
+/// <see cref="Play"/> を呼ぶと以下のフェーズを順次実行する:<br/>
+/// Waiting → DelayBeforeCollapse → Collapsing（パネル崩落）→ DelayAfterCollapse<br/>
+/// → ExpandingLight（ライト拡張・全体明転）→ DelayAfterLight → SelfMove（stage root 自走）→ Complete
+/// </para>
+/// <para>
+/// Complete フェーズで <see cref="StageSequenceController.FadeToStage"/> を呼び Stage 3 へ遷移する。<br/>
+/// <c>advanceToStage3OnComplete = false</c> にすると遷移をスキップできる。
+/// </para>
+/// </summary>
 [AddComponentMenu("Stages/Stage 2 Completion Sequence")]
 public class Stage2CompletionSequence : MonoBehaviour
 {
@@ -270,11 +282,6 @@ public class Stage2CompletionSequence : MonoBehaviour
     {
         currentPhase = SequencePhase.Collapsing;
         phaseElapsed = 0f;
-        ResolveCodeLockPuzzle();
-        if (codeLockPuzzle != null)
-        {
-            codeLockPuzzle.DisableSolvedGlowForCollapse();
-        }
         DisableCollapseTargetBehaviours();
         SpawnCollapsePieces();
     }
