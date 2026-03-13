@@ -66,14 +66,20 @@ public class PoseDebugOverlay : MonoBehaviour
         GUILayout.Label("Sender: " + lastSender);
         GUILayout.Label("Packets: " + packets.ToString(CultureInfo.InvariantCulture));
         GUILayout.Label("Coordinate Preset: " + coordinatePreset);
+        GUILayout.Label("Face-Down Mode: " + (receiver != null ? receiver.ScreenFaceDown.ToString() : "-"));
         GUILayout.Label("Packet Raw Quaternion: " + raw.ToString("F4"));
         GUILayout.Label("Stabilized Raw Quaternion: " + stabilizedRaw.ToString("F4"));
         GUILayout.Label("Converted Quaternion: " + converted.ToString("F4"));
         GUILayout.Label("Applied Quaternion: " + applied.ToString("F4"));
         GUILayout.Label("Applied Euler: " + applied.eulerAngles.ToString("F1"));
+        GUILayout.Label("Touch Packets Received: " + (receiver != null ? receiver.TouchPacketCount.ToString(CultureInfo.InvariantCulture) : "-"));
+        GUILayout.Label("Touch Status: " + (receiver != null ? receiver.LastTouchStatus : "-"));
+        GUILayout.Label("Recenter Count: " + (receiver != null ? receiver.RecenterRequestCount.ToString(CultureInfo.InvariantCulture) : "-"));
+        GUILayout.Label("Last Recenter: " + (receiver != null && receiver.LastRecenterTime != System.DateTime.MinValue
+            ? string.Format(CultureInfo.InvariantCulture, "{0:F1}s ago", (System.DateTime.Now - receiver.LastRecenterTime).TotalSeconds)
+            : "Never"));
         GUILayout.Label("Projection Surface: " + (visualizer != null ? visualizer.CurrentSurfaceName : "-"));
-        GUILayout.Label("Recenter Key: C");
-        GUILayout.Label("Debug Toggle Key: " + toggleOverlayKey);
+        GUILayout.Label("Recenter Key: C  |  Debug Toggle Key: " + toggleOverlayKey);
 
         if (driver != null && GUILayout.Button("Reset Calibration", GUILayout.Height(28f)))
         {
