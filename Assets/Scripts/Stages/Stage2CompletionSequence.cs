@@ -283,6 +283,11 @@ public class Stage2CompletionSequence : MonoBehaviour
     {
         currentPhase = SequencePhase.Collapsing;
         phaseElapsed = 0f;
+        ResolveCodeLockPuzzle();
+        if (codeLockPuzzle != null)
+        {
+            codeLockPuzzle.DisableSolvedGlowForCollapse();
+        }
         DisableCollapseTargetBehaviours();
         SpawnCollapsePieces();
     }

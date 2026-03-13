@@ -193,7 +193,6 @@ public static class StageSequenceDebugBuilder
     private static void EnsureStage2(Transform root)
     {
         EnsureStageSpotlightSettings(root, true, 20f, 68f, 18f, Color.white);
-        EnsureGround(root, "Stage2 Ground", new Vector3(0f, -0.55f, 8f), new Vector3(10f, 0.2f, 8f), new Color(0.12f, 0.12f, 0.2f, 1f));
         RemoveGeneratedStage2Label(root);
         RemoveGeneratedStage2CompleteMarker(root);
 
@@ -284,7 +283,7 @@ public static class StageSequenceDebugBuilder
         bool advanceToNextStage,
         int nextStageIndex)
     {
-        EnsureStageSpotlightSettings(root, true, 14f, 42f, 15f, Color.white);
+        EnsureStageSpotlightSettings(root, true, 20f, 68f, 18f, Color.white);
         RemoveGeneratedStage3Content(root);
 
         EnsureGround(root, "Stage" + stageNumber + " Ground", new Vector3(0f, -0.55f, groundScale.z * 0.5f + 0.5f), groundScale, groundColor);

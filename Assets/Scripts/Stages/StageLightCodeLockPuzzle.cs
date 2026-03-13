@@ -31,14 +31,12 @@ public class StageLightCodeLockPuzzle : MonoBehaviour
     [SerializeField] private float solvedDoorGlowEmissionIntensity = 2.4f;
     [SerializeField] private float solvedDoorGlowLightIntensity = 1.25f;
     [SerializeField] private float solvedDoorGlowLightRange = 3.2f;
-    [SerializeField] private float solvedDoorGlowFrameThickness = 0.045f;
 
     public bool IsSolved { get; private set; }
     public string TargetCode => targetCode;
 
     private Vector3 closedDoorLocalPosition;
     private bool solvedVisualsApplied;
-    private readonly LineRenderer[] doorGlowLines = new LineRenderer[4];
     private Light doorGlowLight;
 
     private void Awake()
@@ -126,7 +124,13 @@ public class StageLightCodeLockPuzzle : MonoBehaviour
 
     public void DisableSolvedGlowForCollapse()
     {
-        SetDoorGlowActive(false);
+        if (doorGlowLight != null && solvedVisualsApplied)
+        {
+            doorGlowLight.color = solvedDoorGlowColor;
+            doorGlowLight.range = solvedDoorGlowLightRange;
+            doorGlowLight.intensity = solvedDoorGlowLightIntensity;
+            doorGlowLight.enabled = true;
+        }
     }
 
     public void ApplyCodeInstantly(string code)
@@ -204,37 +208,7 @@ public class StageLightCodeLockPuzzle : MonoBehaviour
             return;
         }
 
-        EnsureDoorGlowFrame();
-        Color frameColor = solvedDoorGlowColor * solvedDoorGlowEmissionIntensity;
-
-        for (int index = 0; index < doorGlowLines.Length; index++)
-        {
-            LineRenderer line = doorGlowLines[index];
-            if (line == null)
-            {
-                continue;
-            }
-
-            line.enabled = isActive;
-            line.startWidth = solvedDoorGlowFrameThickness;
-            line.endWidth = solvedDoorGlowFrameThickness;
-            line.startColor = solvedDoorGlowColor;
-            line.endColor = solvedDoorGlowColor;
-
-            Material material = line.sharedMaterial;
-            if (material != null && material.HasProperty("_EmissionColor"))
-            {
-                material.SetColor("_EmissionColor", isActive ? frameColor : Color.black);
-                if (isActive)
-                {
-                    material.EnableKeyword("_EMISSION");
-                }
-                else
-                {
-                    material.DisableKeyword("_EMISSION");
-                }
-            }
-        }
+        EnsureDoorGlowLight();
 
         if (doorGlowLight != null)
         {
@@ -245,82 +219,31 @@ public class StageLightCodeLockPuzzle : MonoBehaviour
         }
     }
 
-    private void EnsureDoorGlowFrame()
+    private void EnsureDoorGlowLight()
     {
-        if (doorTransform == null)
+        if (doorGlowLight != null || doorTransform == null)
         {
             return;
         }
 
-        Renderer doorRenderer = doorTransform.GetComponent<Renderer>();
-        if (doorRenderer == null)
+        Transform glowLightTransform = doorTransform.Find("Door Glow Light");
+        if (glowLightTransform == null)
         {
-            return;
+            glowLightTransform = new GameObject("Door Glow Light").transform;
+            glowLightTransform.SetParent(doorTransform, false);
         }
 
-        Bounds bounds = doorRenderer.bounds;
-        Vector3[] corners =
-        {
-            new Vector3(bounds.min.x, bounds.min.y, bounds.center.z),
-            new Vector3(bounds.max.x, bounds.min.y, bounds.center.z),
-            new Vector3(bounds.max.x, bounds.max.y, bounds.center.z),
-            new Vector3(bounds.min.x, bounds.max.y, bounds.center.z)
-        };
+        glowLightTransform.localPosition = new Vector3(0f, 1f, -0.25f);
+        glowLightTransform.localRotation = Quaternion.identity;
 
-        for (int edgeIndex = 0; edgeIndex < 4; edgeIndex++)
-        {
-            if (doorGlowLines[edgeIndex] == null)
-            {
-                GameObject edgeObject = new GameObject("Door Glow Edge " + edgeIndex);
-                edgeObject.transform.SetParent(doorTransform, true);
-                LineRenderer line = edgeObject.AddComponent<LineRenderer>();
-                line.useWorldSpace = true;
-                line.positionCount = 2;
-                line.alignment = LineAlignment.View;
-                line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                line.receiveShadows = false;
-                line.numCapVertices = 2;
-                line.numCornerVertices = 2;
-                Shader shader = Shader.Find("Universal Render Pipeline/Unlit")
-                    ?? Shader.Find("Unlit/Color")
-                    ?? Shader.Find("Sprites/Default");
-                if (shader != null)
-                {
-                    Material material = new Material(shader);
-                    material.name = "Door Glow Edge Material " + edgeIndex;
-                    line.sharedMaterial = material;
-                }
-
-                doorGlowLines[edgeIndex] = line;
-            }
-
-            int nextIndex = (edgeIndex + 1) % 4;
-            LineRenderer edgeLine = doorGlowLines[edgeIndex];
-            edgeLine.SetPosition(0, corners[edgeIndex]);
-            edgeLine.SetPosition(1, corners[nextIndex]);
-        }
-
+        doorGlowLight = glowLightTransform.GetComponent<Light>();
         if (doorGlowLight == null)
         {
-            Transform glowLightTransform = doorTransform.Find("Door Glow Light");
-            if (glowLightTransform == null)
-            {
-                glowLightTransform = new GameObject("Door Glow Light").transform;
-                glowLightTransform.SetParent(doorTransform, false);
-            }
-
-            glowLightTransform.position = bounds.center - (doorTransform.forward * 0.25f) + Vector3.up;
-            glowLightTransform.rotation = Quaternion.identity;
-
-            doorGlowLight = glowLightTransform.GetComponent<Light>();
-            if (doorGlowLight == null)
-            {
-                doorGlowLight = glowLightTransform.gameObject.AddComponent<Light>();
-            }
-
-            doorGlowLight.type = LightType.Point;
-            doorGlowLight.shadows = LightShadows.None;
-            doorGlowLight.enabled = false;
+            doorGlowLight = glowLightTransform.gameObject.AddComponent<Light>();
         }
+
+        doorGlowLight.type = LightType.Point;
+        doorGlowLight.shadows = LightShadows.None;
+        doorGlowLight.enabled = false;
     }
 }

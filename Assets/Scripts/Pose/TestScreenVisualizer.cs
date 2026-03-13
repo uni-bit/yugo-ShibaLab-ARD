@@ -200,101 +200,11 @@ public class TestScreenVisualizer : MonoBehaviour
             return sourceLight != null ? sourceLight.transform.forward : transform.forward;
         }
 
-        if (receiver != null && receiver.CoordinatePreset == QuaternionCoordinatePreset.IPhoneCoreMotion)
-        {
-            Transform iPhoneBasisTransform = pointerTransform.parent != null ? pointerTransform.parent : transform;
-            Vector3 localDirection = iPhoneBasisTransform != null
-                ? iPhoneBasisTransform.InverseTransformDirection(pointerTransform.forward)
-                : pointerTransform.forward;
-
-            if (iPhoneInvertPitch)
-            {
-                localDirection.y = -localDirection.y;
-            }
-
-            if (iPhoneInvertYaw)
-            {
-                localDirection.x = -localDirection.x;
-            }
-
-            if (localDirection.sqrMagnitude <= 0.000001f)
-            {
-                return pointerTransform.forward;
-            }
-
-            localDirection.Normalize();
-            return (iPhoneBasisTransform != null ? iPhoneBasisTransform.rotation : Quaternion.identity) * localDirection;
-        }
-
-        if (!useYawPitchRay)
-        {
-            return pointerTransform.forward;
-        }
-
-        Transform basisTransform = pointerTransform.parent != null ? pointerTransform.parent : transform;
-        Quaternion localRotation = basisTransform != null
-            ? Quaternion.Inverse(basisTransform.rotation) * pointerTransform.rotation
-            : pointerTransform.localRotation;
-
-        ResolveActiveRaySettings(
-            out RayControlMode rayControlMode,
-            out bool shouldInvertPitch,
-            out bool shouldInvertYaw,
-            out RotationAxisSource horizontalAxisSource,
-            out RotationAxisSource verticalAxisSource);
-
-        float yaw;
-        float pitch;
-
-        if (rayControlMode == RayControlMode.ForwardVectorYawPitch)
-        {
-            Vector3 localForward = basisTransform != null
-                ? basisTransform.InverseTransformDirection(pointerTransform.forward)
-                : pointerTransform.localRotation * Vector3.forward;
-
-            if (localForward.sqrMagnitude <= 0.000001f)
-            {
-                return pointerTransform.forward;
-            }
-
-            localForward.Normalize();
-
-            if (receiver != null
-                && receiver.CoordinatePreset == QuaternionCoordinatePreset.IPhoneCoreMotion
-                && iPhoneUseUpVectorForYaw)
-            {
-                Vector3 localUp = basisTransform != null
-                    ? basisTransform.InverseTransformDirection(pointerTransform.up)
-                    : pointerTransform.localRotation * Vector3.up;
-
-                localUp.Normalize();
-                yaw = Mathf.Atan2(localUp.x, localUp.y) * Mathf.Rad2Deg;
-            }
-            else
-            {
-                yaw = Mathf.Atan2(localForward.x, localForward.z) * Mathf.Rad2Deg;
-            }
-
-            pitch = Mathf.Atan2(localForward.y, Mathf.Sqrt((localForward.x * localForward.x) + (localForward.z * localForward.z))) * Mathf.Rad2Deg;
-        }
-        else
-        {
-            yaw = GetSignedAxisAngle(localRotation, horizontalAxisSource);
-            pitch = GetSignedAxisAngle(localRotation, verticalAxisSource);
-        }
-
-        if (shouldInvertPitch)
-        {
-            pitch = -pitch;
-        }
-
-        if (shouldInvertYaw)
-        {
-            yaw = -yaw;
-        }
-
-        Quaternion yawPitchRotation = Quaternion.Euler(pitch, yaw, 0f);
-        return (basisTransform != null ? basisTransform.rotation : Quaternion.identity) * (yawPitchRotation * Vector3.forward);
+        // Use the rotation pivot's forward directly.
+        // PoseRotationDriver already applies the calibrated relative rotation
+        // to the pivot, so its forward vector faithfully represents the
+        // physical pointing direction for both the front and left surfaces.
+        return pointerTransform.forward;
     }
 
     private static float GetSignedAxisAngle(Quaternion localRotation, RotationAxisSource axisSource)

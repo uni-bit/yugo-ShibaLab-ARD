@@ -60,7 +60,6 @@ public class UdpQuaternionReceiver : MonoBehaviour
     private bool hasW;
     private DateTime lastTouchRecenterTime = DateTime.MinValue;
     private DateTime lastTouchPacketTime = DateTime.MinValue;
-    private bool touchInputActive;
     private int recenterRequestCount;
     private int pendingRecenterRequests;
     private int touchPacketCount;
@@ -924,25 +923,25 @@ public class UdpQuaternionReceiver : MonoBehaviour
         {
             if (!hasActiveTouch)
             {
-                touchInputActive = false;
                 return false;
             }
 
             Interlocked.Increment(ref touchPacketCount);
 
             DateTime now = DateTime.UtcNow;
-            double secondsSinceTouchPacket = lastTouchPacketTime == DateTime.MinValue
+
+            // Rising-edge detection: only trigger on the first touch message
+            // after a gap. ZigSim sends 2dtouch every frame while the finger
+            // is on the screen and stops when lifted. A gap >= 0.3 s means
+            // the finger was lifted and this is a new touch-down event.
+            double secondsSinceLastTouchMessage = lastTouchPacketTime == DateTime.MinValue
                 ? double.MaxValue
                 : (now - lastTouchPacketTime).TotalSeconds;
             lastTouchPacketTime = now;
 
-            // Merge x/y pair packets and tiny OSC bursts into one recenter request.
-            if (secondsSinceTouchPacket < 0.12d)
+            bool isNewTouch = secondsSinceLastTouchMessage >= 0.3d;
+            if (!isNewTouch)
             {
-                LastTouchStatus = string.Format(
-                    System.Globalization.CultureInfo.InvariantCulture,
-                    "Touch detected (debounce {0:F3}s < 0.12s)",
-                    secondsSinceTouchPacket);
                 return false;
             }
 

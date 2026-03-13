@@ -28,6 +28,15 @@ public class Stage3RockHintPuzzle : MonoBehaviour
         public float UpSpeed;
     }
 
+    [System.Serializable]
+    private struct ObstacleRockEntry
+    {
+        public Transform Rock;
+        public float ResetY;
+        public float MaxY;
+        public float RiseSpeed;
+    }
+
     private enum FinalePhase
     {
         None,
@@ -46,18 +55,18 @@ public class Stage3RockHintPuzzle : MonoBehaviour
     [SerializeField] private Color greenGlowColor = new Color(0.28f, 0.95f, 0.42f, 1f);
     [SerializeField] private Color blueGlowColor = new Color(0.24f, 0.62f, 1f, 1f);
     [SerializeField] private float inactiveColorMultiplier = 0.28f;
-    [SerializeField] private float pedestalEmissionIntensity = 1.15f;
-    [SerializeField] private float hintRockEmissionIntensity = 1.55f;
-    [SerializeField] private float redPedestalEmissionIntensity = 1.35f;
+    [SerializeField] private float pedestalEmissionIntensity = 1.9f;
+    [SerializeField] private float hintRockEmissionIntensity = 2.6f;
+    [SerializeField] private float redPedestalEmissionIntensity = 2.2f;
     [SerializeField] private float inactiveEmissionIntensity = 0f;
-    [SerializeField] private float pedestalGlowLightIntensity = 0.52f;
-    [SerializeField] private float hintGlowLightIntensity = 0.68f;
-    [SerializeField] private float redPedestalGlowLightIntensity = 0.6f;
-    [SerializeField] private float glowLightRange = 2.3f;
+    [SerializeField] private float pedestalGlowLightIntensity = 0.2f;
+    [SerializeField] private float hintGlowLightIntensity = 0.26f;
+    [SerializeField] private float redPedestalGlowLightIntensity = 0.22f;
+    [SerializeField] private float glowLightRange = 1.8f;
     [SerializeField] private float emissiveShellScale = 1.07f;
-    [SerializeField] private float emissiveShellAlpha = 0.34f;
-    [SerializeField] private float maxRockEmissionIntensity = 1.4f;
-    [SerializeField] private float hintHoldSeconds = 1f;
+    [SerializeField] private float emissiveShellAlpha = 0.48f;
+    [SerializeField] private float maxRockEmissionIntensity = 2.7f;
+    [SerializeField] private float hintHoldSeconds = 2f;
     [SerializeField] private float hintActivationExposureThreshold = 0.045f;
     [SerializeField, Range(0.05f, 1f)] private float hintCenterZoneNormalizedRadius = 0.35f;
     [SerializeField] private bool requireHintCenterZone = false;
@@ -65,13 +74,13 @@ public class Stage3RockHintPuzzle : MonoBehaviour
     [SerializeField] private float brightenDuration = 1.1f;
     [SerializeField] private float holdBeforeStageTransitionSeconds = 1f;
     [SerializeField] private Color finalBrightnessColor = new Color(1f, 0.96f, 0.84f, 1f);
-    [SerializeField] private float emissionBoost = 2.4f;
+    [SerializeField] private float emissionBoost = 0f;
     [SerializeField] private float hiddenBrightenAlpha = 0.92f;
-    [SerializeField] private Color ambientTargetColor = new Color(0.85f, 0.8f, 0.68f, 1f);
-    [SerializeField] private float localRevealLightIntensity = 8f;
-    [SerializeField] private float localRevealLightRange = 4.8f;
-    [SerializeField] private float finalLightIntensity = 6f;
-    [SerializeField] private float finalLightRange = 34f;
+    [SerializeField] private Color ambientTargetColor = new Color(0.22f, 0.22f, 0.24f, 1f);
+    [SerializeField] private float localRevealLightIntensity = 1.8f;
+    [SerializeField] private float localRevealLightRange = 2.8f;
+    [SerializeField] private float finalLightIntensity = 1.2f;
+    [SerializeField] private float finalLightRange = 12f;
     [SerializeField] private float revealLightHeightOffset = 0.35f;
     [SerializeField] private bool advanceToNextStageOnComplete = true;
     [SerializeField] private int nextStageIndex = 3;
@@ -79,6 +88,9 @@ public class Stage3RockHintPuzzle : MonoBehaviour
     [SerializeField] private float burstSpeed = 2.8f;
     [SerializeField] private float burstLifetime = 0.85f;
     [SerializeField] private LoopingLiftTarget[] loopingLiftTargets = new LoopingLiftTarget[0];
+    [SerializeField] private ObstacleRockEntry[] obstacleRocks = new ObstacleRockEntry[0];
+    [SerializeField] private float obstacleGlowIntensity = 0.8f;
+    [SerializeField] private Color obstacleGlowColor = new Color(0.85f, 0.55f, 0.2f, 1f);
 
     private SpotlightSensor greenHintSensor;
     private SpotlightSensor blueHintSensor;
@@ -155,6 +167,7 @@ public class Stage3RockHintPuzzle : MonoBehaviour
         UpdateHintActivation(greenHintSensor, ref greenHintHoldTimer, ref greenActivated, greenHintRock, greenGlowColor, ref greenHintBurstPlayed, greenPedestalRock, ref greenPedestalBurstPlayed);
         UpdateHintActivation(blueHintSensor, ref blueHintHoldTimer, ref blueActivated, blueHintRock, blueGlowColor, ref blueHintBurstPlayed, bluePedestalRock, ref bluePedestalBurstPlayed);
         UpdateLoopingLiftTargets();
+        UpdateObstacleRocks();
 
         if (greenActivated && blueActivated)
         {
@@ -263,30 +276,59 @@ public class Stage3RockHintPuzzle : MonoBehaviour
         Transform pedestalRock,
         ref bool pedestalBurstPlayed)
     {
-        bool isLit = IsHintIlluminated(sensor);
-        if (!activated)
+        if (activated)
         {
-            holdTimer = isLit ? holdTimer + Time.deltaTime : 0f;
-            if (holdTimer >= hintHoldSeconds)
-            {
-                activated = true;
-                RefreshVisuals();
-
-                if (!hintBurstPlayed)
-                {
-                    SpawnBurst(hintRock);
-                    hintBurstPlayed = true;
-                }
-
-                if (!pedestalBurstPlayed)
-                {
-                    SpawnBurst(pedestalRock);
-                    pedestalBurstPlayed = true;
-                }
-            }
-
             return;
         }
+
+        bool isLit = IsHintIlluminated(sensor);
+        if (isLit)
+        {
+            holdTimer += Time.deltaTime;
+        }
+        else
+        {
+            if (holdTimer > 0f)
+            {
+                holdTimer = 0f;
+                ApplyGradualGlow(hintRock, glowColor, 0f);
+            }
+            return;
+        }
+
+        float progress = Mathf.Clamp01(holdTimer / Mathf.Max(0.001f, hintHoldSeconds));
+        ApplyGradualGlow(hintRock, glowColor, progress);
+
+        if (holdTimer >= hintHoldSeconds)
+        {
+            activated = true;
+            RefreshVisuals();
+
+            if (!hintBurstPlayed)
+            {
+                SpawnBurst(hintRock);
+                hintBurstPlayed = true;
+            }
+
+            if (!pedestalBurstPlayed)
+            {
+                SpawnBurst(pedestalRock);
+                pedestalBurstPlayed = true;
+            }
+        }
+    }
+
+    private void ApplyGradualGlow(Transform rockRoot, Color glowColor, float progress)
+    {
+        if (rockRoot == null)
+        {
+            return;
+        }
+
+        float lerpedEmission = Mathf.Lerp(inactiveEmissionIntensity, hintRockEmissionIntensity, progress);
+        float lerpedLightIntensity = Mathf.Lerp(0f, hintGlowLightIntensity, progress);
+        ApplyRockState(rockRoot, glowColor, progress > 0.01f, lerpedEmission);
+        ApplyRockGlowLight(rockRoot, glowColor, progress > 0.01f, lerpedLightIntensity);
     }
 
     private bool IsHintIlluminated(SpotlightSensor sensor)
@@ -303,7 +345,7 @@ public class Stage3RockHintPuzzle : MonoBehaviour
 
         if (!requireHintCenterZone)
         {
-            return true;
+            return !IsBlockedByObstacle(sensor);
         }
 
         Light sourceLight = sensor.SourceLight;
@@ -321,7 +363,59 @@ public class Stage3RockHintPuzzle : MonoBehaviour
         float angleToTarget = Vector3.Angle(sourceLight.transform.forward, toTarget.normalized);
         float halfAngle = sourceLight.spotAngle * 0.5f;
         float normalized = angleToTarget / Mathf.Max(halfAngle, 0.0001f);
-        return normalized <= hintCenterZoneNormalizedRadius;
+        return normalized <= hintCenterZoneNormalizedRadius && !IsBlockedByObstacle(sensor);
+    }
+
+    private bool IsBlockedByObstacle(SpotlightSensor sensor)
+    {
+        if (obstacleRocks == null || obstacleRocks.Length == 0 || sensor == null)
+        {
+            return false;
+        }
+
+        Light sourceLight = sensor.SourceLight;
+        if (sourceLight == null)
+        {
+            return false;
+        }
+
+        Vector3 lightPosition = sourceLight.transform.position;
+        Vector3 sensorPosition = sensor.transform.position;
+        Vector3 direction = sensorPosition - lightPosition;
+        float maxDistance = direction.magnitude;
+        if (maxDistance <= 0.001f)
+        {
+            return false;
+        }
+
+        direction /= maxDistance;
+
+        for (int index = 0; index < obstacleRocks.Length; index++)
+        {
+            Transform obstacleRoot = obstacleRocks[index].Rock;
+            if (obstacleRoot == null)
+            {
+                continue;
+            }
+
+            Collider[] colliders = obstacleRoot.GetComponentsInChildren<Collider>(false);
+            for (int colliderIndex = 0; colliderIndex < colliders.Length; colliderIndex++)
+            {
+                Collider col = colliders[colliderIndex];
+                if (col == null || !col.enabled)
+                {
+                    continue;
+                }
+
+                Ray ray = new Ray(lightPosition, direction);
+                if (col.Raycast(ray, out RaycastHit hit, maxDistance))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private void UpdateLoopingLiftTargets()
@@ -351,6 +445,75 @@ public class Stage3RockHintPuzzle : MonoBehaviour
             }
 
             entry.Target.position = position;
+        }
+    }
+
+    private void UpdateObstacleRocks()
+    {
+        if (obstacleRocks == null || obstacleRocks.Length == 0)
+        {
+            return;
+        }
+
+        for (int index = 0; index < obstacleRocks.Length; index++)
+        {
+            ObstacleRockEntry entry = obstacleRocks[index];
+            if (entry.Rock == null)
+            {
+                continue;
+            }
+
+            float maxY = Mathf.Max(entry.ResetY, entry.MaxY);
+            float resetY = Mathf.Min(entry.ResetY, entry.MaxY);
+            float speed = Mathf.Max(0f, entry.RiseSpeed);
+
+            Vector3 position = entry.Rock.position;
+            position.y += speed * Time.deltaTime;
+            if (position.y >= maxY)
+            {
+                position.y = resetY;
+            }
+
+            entry.Rock.position = position;
+
+            UpdateObstacleGlow(entry.Rock);
+        }
+    }
+
+    private void UpdateObstacleGlow(Transform obstacleRoot)
+    {
+        if (obstacleRoot == null)
+        {
+            return;
+        }
+
+        SpotlightSensor sensor = obstacleRoot.GetComponent<SpotlightSensor>();
+        if (sensor == null)
+        {
+            return;
+        }
+
+        bool isLit = sensor.IsLit || sensor.Exposure01 >= hintActivationExposureThreshold;
+        float intensity = isLit ? obstacleGlowIntensity : 0f;
+
+        Renderer[] renderers = obstacleRoot.GetComponentsInChildren<Renderer>(false);
+        if (propertyBlock == null)
+        {
+            propertyBlock = new MaterialPropertyBlock();
+        }
+
+        Color emissionColor = obstacleGlowColor * intensity;
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            Renderer rend = renderers[i];
+            if (rend == null)
+            {
+                continue;
+            }
+
+            rend.GetPropertyBlock(propertyBlock);
+            propertyBlock.SetColor("_EmissionColor", emissionColor);
+            rend.SetPropertyBlock(propertyBlock);
         }
     }
 
@@ -846,7 +1009,6 @@ public class Stage3RockHintPuzzle : MonoBehaviour
 
     private void ApplyBrightening(float progress)
     {
-        Color revealedHiddenColor = new Color(finalBrightnessColor.r, finalBrightnessColor.g, finalBrightnessColor.b, hiddenBrightenAlpha);
         RenderSettings.ambientLight = Color.Lerp(initialAmbientColor, ambientTargetColor, progress);
 
         for (int index = 0; index < rendererStates.Count; index++)
@@ -859,29 +1021,10 @@ public class Stage3RockHintPuzzle : MonoBehaviour
 
             state.Renderer.GetPropertyBlock(state.PropertyBlock);
 
-            if (state.HasBaseColor)
-            {
-                state.PropertyBlock.SetColor("_BaseColor", Color.Lerp(state.BaseColor, finalBrightnessColor, progress));
-            }
-
-            if (state.HasAlbedoColor)
-            {
-                state.PropertyBlock.SetColor("_Color", Color.Lerp(state.AlbedoColor, finalBrightnessColor, progress));
-            }
-
-            if (state.HasLitColor)
-            {
-                state.PropertyBlock.SetColor("_LitColor", Color.Lerp(state.LitColor, finalBrightnessColor, progress));
-            }
-
             if (state.HasHiddenColor)
             {
-                state.PropertyBlock.SetColor("_HiddenColor", Color.Lerp(state.HiddenColor, revealedHiddenColor, progress));
-            }
-
-            if (state.HasEmissionColor)
-            {
-                state.PropertyBlock.SetColor("_EmissionColor", finalBrightnessColor * (progress * emissionBoost));
+                Color revealedHiddenColor = new Color(state.HiddenColor.r, state.HiddenColor.g, state.HiddenColor.b, Mathf.Lerp(state.HiddenColor.a, hiddenBrightenAlpha, progress));
+                state.PropertyBlock.SetColor("_HiddenColor", revealedHiddenColor);
             }
 
             state.Renderer.SetPropertyBlock(state.PropertyBlock);
