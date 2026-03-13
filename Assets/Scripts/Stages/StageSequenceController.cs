@@ -146,13 +146,22 @@ public class StageSequenceController : MonoBehaviour
         bool hadSpotlight = activeSpotLight != null;
         bool restoreEnabled = hadSpotlight && activeSpotLight.enabled;
 
-        if (hadSpotlight)
-        {
-            activeSpotLight.enabled = false;
-        }
+        // Preload next stage once the overlay is nearly opaque so the user
+        // cannot see both stages at once, but Unity has time to run OnEnable
+        // on all components before the actual switch fires.
+        GameObject nextRoot = stageRoots != null && stageIndex >= 0 && stageIndex < stageRoots.Length
+            ? stageRoots[stageIndex]
+            : null;
+        StartCoroutine(PreloadStageWhenOverlayOpaque(nextRoot));
 
         yield return transitionFader.FadeOutIn(() =>
         {
+            // Disable spotlight only at the fully-black moment so the
+            // fade-out overlay is visible while the scene is still lit.
+            if (hadSpotlight)
+            {
+                activeSpotLight.enabled = false;
+            }
             ApplyStageVisibility(stageIndex);
             RefreshActiveStageState();
         });
@@ -184,13 +193,17 @@ public class StageSequenceController : MonoBehaviour
         bool hadSpotlight = activeSpotLight != null;
         bool restoreEnabled = hadSpotlight && activeSpotLight.enabled;
 
-        if (hadSpotlight)
-        {
-            activeSpotLight.enabled = false;
-        }
+        GameObject nextRoot = stageRoots != null && stageIndex >= 0 && stageIndex < stageRoots.Length
+            ? stageRoots[stageIndex]
+            : null;
+        StartCoroutine(PreloadStageWhenOverlayOpaque(nextRoot));
 
         yield return transitionFader.FadeOutInCustom(() =>
         {
+            if (hadSpotlight)
+            {
+                activeSpotLight.enabled = false;
+            }
             ApplyStageVisibility(stageIndex);
             RefreshActiveStageState();
         }, fadeOutDuration, fadeInDuration, fadeOverlayColor);
@@ -199,6 +212,23 @@ public class StageSequenceController : MonoBehaviour
         {
             RefreshActiveStageState();
             activeSpotLight.enabled = restoreEnabled;
+        }
+    }
+
+    private IEnumerator PreloadStageWhenOverlayOpaque(GameObject stageRoot)
+    {
+        if (stageRoot == null || stageRoot.activeSelf)
+        {
+            yield break;
+        }
+
+        // Wait until the fade overlay is nearly opaque so the user cannot
+        // see the newly activated stage behind the current one.
+        yield return new WaitUntil(() => transitionFader != null && transitionFader.Alpha >= 0.88f);
+
+        if (stageRoot != null && !stageRoot.activeSelf)
+        {
+            stageRoot.SetActive(true);
         }
     }
 

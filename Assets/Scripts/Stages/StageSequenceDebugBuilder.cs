@@ -579,6 +579,19 @@ public static class StageSequenceDebugBuilder
         }
         SetRendererColor(door, new Color(0.08f, 0.09f, 0.1f, 1f));
 
+        for (int c = door.transform.childCount - 1; c >= 0; c--)
+        {
+            Transform child = door.transform.GetChild(c);
+            if (Application.isPlaying)
+            {
+                Object.Destroy(child.gameObject);
+            }
+            else
+            {
+                Object.DestroyImmediate(child.gameObject);
+            }
+        }
+
         rig.Configure(panel.transform, contentRoot, topTextRoot, door.transform, columnRoots);
         codeLockPuzzle.Configure(columns, door.transform, topFormula, formulaDisplay, "834");
 

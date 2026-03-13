@@ -14,6 +14,7 @@ public class StageTransitionFader : MonoBehaviour
     private Color activeFadeColor = Color.black;
 
     public bool IsFading => isFading;
+    public float Alpha => alpha;
 
     public IEnumerator FadeOutIn(System.Action switchStageAction)
     {
@@ -27,6 +28,8 @@ public class StageTransitionFader : MonoBehaviour
 
         yield return FadeAlpha(0f, 1f, fadeOutDuration);
         switchStageAction?.Invoke();
+        yield return null;
+        yield return null;
         yield return null;
         yield return FadeAlpha(1f, 0f, fadeInDuration);
 
@@ -46,6 +49,8 @@ public class StageTransitionFader : MonoBehaviour
 
         yield return FadeAlpha(0f, 1f, customFadeOutDuration);
         switchStageAction?.Invoke();
+        yield return null;
+        yield return null;
         yield return null;
         yield return FadeAlpha(1f, 0f, customFadeInDuration);
 

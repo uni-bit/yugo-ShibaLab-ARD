@@ -313,8 +313,6 @@ public class TestScreenVisualizer : MonoBehaviour
         float halfWidth = surface.Width * 0.5f;
         float halfHeight = surface.Height * 0.5f;
         isInsideSurface = Mathf.Abs(local.x) <= halfWidth && Mathf.Abs(local.y) <= halfHeight;
-        local.x = Mathf.Clamp(local.x, -halfWidth, halfWidth);
-        local.y = Mathf.Clamp(local.y, -halfHeight, halfHeight);
         local.z = 0f;
         hitPoint = surface.transform.TransformPoint(local);
         return true;
@@ -325,9 +323,11 @@ public class TestScreenVisualizer : MonoBehaviour
         if (surface != null)
         {
             Vector3 localDirection = surface.transform.InverseTransformDirection(rayDirection.normalized);
-            float normalizedX = Mathf.Clamp01((localDirection.x * 0.5f) + 0.5f);
-            float normalizedY = Mathf.Clamp01((localDirection.y * 0.5f) + 0.5f);
-            return surface.GetPoint(normalizedX, normalizedY);
+            float nx = (localDirection.x * 0.5f) + 0.5f;
+            float ny = (localDirection.y * 0.5f) + 0.5f;
+            return surface.transform.position
+                + surface.transform.right * ((nx - 0.5f) * surface.Width)
+                + surface.transform.up * ((ny - 0.5f) * surface.Height);
         }
 
         float aspect = (float)referenceResolution.x / referenceResolution.y;
@@ -336,9 +336,9 @@ public class TestScreenVisualizer : MonoBehaviour
 
         if (rayDirection.x < 0f)
         {
-            return transform.TransformPoint(new Vector3(-screenWidthWorld * 0.5f, Mathf.Clamp(rayDirection.y, -1f, 1f) * halfHeight, screenDistance));
+            return transform.TransformPoint(new Vector3(-screenWidthWorld * 0.5f, rayDirection.y * halfHeight, screenDistance));
         }
 
-        return transform.TransformPoint(new Vector3(Mathf.Clamp(rayDirection.x, -1f, 1f) * screenWidthWorld * 0.5f, Mathf.Clamp(rayDirection.y, -1f, 1f) * halfHeight, screenDistance));
+        return transform.TransformPoint(new Vector3(rayDirection.x * screenWidthWorld * 0.5f, rayDirection.y * halfHeight, screenDistance));
     }
 }
