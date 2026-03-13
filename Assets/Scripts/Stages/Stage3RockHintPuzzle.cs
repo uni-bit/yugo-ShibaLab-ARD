@@ -84,6 +84,7 @@ public class Stage3RockHintPuzzle : MonoBehaviour
     [SerializeField] private float revealLightHeightOffset = 0.35f;
     [SerializeField] private bool advanceToNextStageOnComplete = true;
     [SerializeField] private int nextStageIndex = 3;
+    [SerializeField] private bool useBrightTransitionToNextStage = false;
     [SerializeField] private int burstParticleCount = 22;
     [SerializeField] private float burstSpeed = 2.8f;
     [SerializeField] private float burstLifetime = 0.85f;
@@ -216,6 +217,11 @@ public class Stage3RockHintPuzzle : MonoBehaviour
     {
         advanceToNextStageOnComplete = shouldAdvanceToNextStage;
         nextStageIndex = Mathf.Max(0, nextStage);
+    }
+
+    public void ConfigureBrightTransition(bool useBright)
+    {
+        useBrightTransitionToNextStage = useBright;
     }
 
     public void RefreshVisuals()
@@ -1118,7 +1124,17 @@ public class Stage3RockHintPuzzle : MonoBehaviour
         }
 
         StageSequenceController sequenceController = FindFirstObjectByType<StageSequenceController>();
-        if (sequenceController != null)
+        if (sequenceController == null)
+        {
+            return;
+        }
+
+        if (useBrightTransitionToNextStage)
+        {
+            // White fade-out, fast fade-in: the new stage appears bright (視界が開ける)
+            sequenceController.FadeToStageWithOptions(nextStageIndex, 0.8f, 0.25f, Color.white);
+        }
+        else
         {
             sequenceController.FadeToStage(nextStageIndex);
         }

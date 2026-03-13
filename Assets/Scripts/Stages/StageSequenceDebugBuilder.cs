@@ -249,7 +249,8 @@ public static class StageSequenceDebugBuilder
             new Vector3(3.8f, 0f, 13.4f),
             new Vector3(0f, 0.7f, 0.85f),
             true,
-            3);
+            3,
+            true);
     }
 
     private static void EnsureStage4(Transform root)
@@ -266,7 +267,14 @@ public static class StageSequenceDebugBuilder
             new Vector3(-4.2f, 0f, 14.2f),
             new Vector3(0f, 0.72f, 0.95f),
             false,
-            3);
+            3,
+            false);
+
+        Stage4SequenceController stage4Seq = root.GetComponent<Stage4SequenceController>();
+        if (stage4Seq == null)
+        {
+            root.gameObject.AddComponent<Stage4SequenceController>();
+        }
     }
 
     private static void EnsureRockHintStage(
@@ -281,7 +289,8 @@ public static class StageSequenceDebugBuilder
         Vector3 cavePosition,
         Vector3 blueHintLocalPosition,
         bool advanceToNextStage,
-        int nextStageIndex)
+        int nextStageIndex,
+        bool brightTransitionToNext = false)
     {
         EnsureStageSpotlightSettings(root, true, 20f, 68f, 18f, Color.white);
         RemoveGeneratedStage3Content(root);
@@ -327,6 +336,7 @@ public static class StageSequenceDebugBuilder
 
         puzzle.ConfigureDefaults(redPedestalRock, greenPedestalRock, bluePedestalRock, greenHintRock, blueHintRock);
         puzzle.ConfigureTransition(advanceToNextStage, nextStageIndex);
+        puzzle.ConfigureBrightTransition(brightTransitionToNext);
     }
 
     private static void RemoveGeneratedStage3Content(Transform root)

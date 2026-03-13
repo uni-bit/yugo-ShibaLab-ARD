@@ -127,7 +127,7 @@ public class StageCodeFormulaDisplay : MonoBehaviour
         ConfigureFormulaText(equalsText, "=", ApplyLayoutOffset(new Vector3(startX + (spacing * 3f), 0f, 0f)), 0.09f, 180);
         ConfigureFormulaText(questionText, "???", ApplyLayoutOffset(new Vector3(questionX, 0f, 0f)), 0.09f, 180);
         ConfigureFrame(frameRenderer, ApplyLayoutOffset(new Vector3(0f, 0f, 0f)), new Vector2(6.2f, 1.45f), 0.04f);
-
+ 
         layoutInitialized = true;
 
     }

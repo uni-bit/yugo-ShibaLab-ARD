@@ -11,6 +11,7 @@ public class StageTransitionFader : MonoBehaviour
     private static Texture2D fadeTexture;
     private float alpha;
     private bool isFading;
+    private Color activeFadeColor = Color.black;
 
     public bool IsFading => isFading;
 
@@ -21,12 +22,32 @@ public class StageTransitionFader : MonoBehaviour
             yield break;
         }
 
+        activeFadeColor = fadeColor;
         isFading = true;
 
         yield return FadeAlpha(0f, 1f, fadeOutDuration);
         switchStageAction?.Invoke();
         yield return null;
         yield return FadeAlpha(1f, 0f, fadeInDuration);
+
+        alpha = 0f;
+        isFading = false;
+    }
+
+    public IEnumerator FadeOutInCustom(System.Action switchStageAction, float customFadeOutDuration, float customFadeInDuration, Color customFadeColor)
+    {
+        if (isFading)
+        {
+            yield break;
+        }
+
+        activeFadeColor = customFadeColor;
+        isFading = true;
+
+        yield return FadeAlpha(0f, 1f, customFadeOutDuration);
+        switchStageAction?.Invoke();
+        yield return null;
+        yield return FadeAlpha(1f, 0f, customFadeInDuration);
 
         alpha = 0f;
         isFading = false;
@@ -62,7 +83,7 @@ public class StageTransitionFader : MonoBehaviour
 
         EnsureTexture();
         Color previousColor = GUI.color;
-        GUI.color = new Color(fadeColor.r, fadeColor.g, fadeColor.b, alpha);
+        GUI.color = new Color(activeFadeColor.r, activeFadeColor.g, activeFadeColor.b, alpha);
         GUI.DrawTexture(new Rect(0f, 0f, Screen.width, Screen.height), fadeTexture);
         GUI.color = previousColor;
     }

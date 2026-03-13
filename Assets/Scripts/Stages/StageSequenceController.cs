@@ -164,6 +164,44 @@ public class StageSequenceController : MonoBehaviour
         }
     }
 
+    public void FadeToStageWithOptions(int stageIndex, float fadeOutDuration, float fadeInDuration, Color fadeOverlayColor)
+    {
+        ResolveRuntimeReferences();
+        if (!Application.isPlaying || transitionFader == null || transitionFader.IsFading)
+        {
+            SetStage(stageIndex);
+            return;
+        }
+
+        StartCoroutine(FadeToStageWithCustomFade(stageIndex, fadeOutDuration, fadeInDuration, fadeOverlayColor));
+    }
+
+    private IEnumerator FadeToStageWithCustomFade(int stageIndex, float fadeOutDuration, float fadeInDuration, Color fadeOverlayColor)
+    {
+        ResolveRuntimeReferences();
+
+        Light activeSpotLight = poseBootstrap != null ? poseBootstrap.ActiveSpotLight : null;
+        bool hadSpotlight = activeSpotLight != null;
+        bool restoreEnabled = hadSpotlight && activeSpotLight.enabled;
+
+        if (hadSpotlight)
+        {
+            activeSpotLight.enabled = false;
+        }
+
+        yield return transitionFader.FadeOutInCustom(() =>
+        {
+            ApplyStageVisibility(stageIndex);
+            RefreshActiveStageState();
+        }, fadeOutDuration, fadeInDuration, fadeOverlayColor);
+
+        if (hadSpotlight)
+        {
+            RefreshActiveStageState();
+            activeSpotLight.enabled = restoreEnabled;
+        }
+    }
+
     public void NextStage()
     {
         if (stageRoots == null || stageRoots.Length == 0)

@@ -15,6 +15,13 @@ public class PoseDebugOverlay : MonoBehaviour
     [SerializeField] private KeyCode toggleOverlayKey = KeyCode.D;
     [SerializeField] private bool showOverlay = true;
     [SerializeField] private bool showPacketDebug = true;
+    [SerializeField] private KeyCode globalBrightnessKey = KeyCode.A;
+    [SerializeField] private bool showKeyHelp = true;
+
+    private bool globalBrightnessEnabled;
+    private Color savedAmbientLight;
+    private float savedSpotIntensity;
+    private PoseTestBootstrap cachedBootstrap;
 
     private void Reset()
     {
@@ -36,6 +43,8 @@ public class PoseDebugOverlay : MonoBehaviour
     private void OnGUI()
     {
         HandleShortcutKeys();
+
+        DrawKeyHelp();
 
         if (!showOverlay)
         {
@@ -60,7 +69,7 @@ public class PoseDebugOverlay : MonoBehaviour
                 (System.DateTime.Now - receiver.LastReceivedTime).TotalSeconds);
         }
 
-        GUILayout.BeginArea(new Rect(10f, 10f, 760f, showPacketDebug ? 560f : 330f), GUI.skin.box);
+        GUILayout.BeginArea(new Rect(10f, 10f, 760f, showPacketDebug ? 700f : 490f), GUI.skin.box);
         GUILayout.Label("UDP Pose Receiver Debug");
         GUILayout.Label("Status: " + lastStatus);
         GUILayout.Label("Sender: " + lastSender);
@@ -79,7 +88,16 @@ public class PoseDebugOverlay : MonoBehaviour
             ? string.Format(CultureInfo.InvariantCulture, "{0:F1}s ago", (System.DateTime.Now - receiver.LastRecenterTime).TotalSeconds)
             : "Never"));
         GUILayout.Label("Projection Surface: " + (visualizer != null ? visualizer.CurrentSurfaceName : "-"));
-        GUILayout.Label("Recenter Key: C  |  Debug Toggle Key: " + toggleOverlayKey);
+        GUILayout.Label("Recenter: C  |  Debug overlay: " + toggleOverlayKey + "  |  Brightness: " + globalBrightnessKey + (globalBrightnessEnabled ? " [ON]" : ""));
+
+        GUILayout.Space(6f);
+        GUILayout.Label("--- Key Help ---");
+        GUILayout.Label("C: Recenter calibration");
+        GUILayout.Label(toggleOverlayKey + ": Toggle this debug overlay");
+        GUILayout.Label(globalBrightnessKey + ": Toggle global brightness (debug)");
+        GUILayout.Label("1~4 / KP1~4: Jump to Stage 1~4");
+        GUILayout.Label("[ / ]: Previous / Next stage");
+        GUILayout.Label("F11: Toggle fullscreen");
 
         if (driver != null && GUILayout.Button("Reset Calibration", GUILayout.Height(28f)))
         {
@@ -129,6 +147,13 @@ public class PoseDebugOverlay : MonoBehaviour
             return;
         }
 
+        if (currentEvent.keyCode == globalBrightnessKey && Application.isPlaying)
+        {
+            ToggleGlobalBrightness();
+            currentEvent.Use();
+            return;
+        }
+
         if (currentEvent.keyCode == KeyCode.C)
         {
             ResetAllCalibration();
@@ -147,6 +172,59 @@ public class PoseDebugOverlay : MonoBehaviour
         {
             visualizer.ResetReference();
         }
+    }
+
+    private void ToggleGlobalBrightness()
+    {
+        if (cachedBootstrap == null)
+        {
+            cachedBootstrap = FindFirstObjectByType<PoseTestBootstrap>();
+        }
+
+        Light spotlight = cachedBootstrap != null ? cachedBootstrap.ActiveSpotLight : null;
+        globalBrightnessEnabled = !globalBrightnessEnabled;
+
+        if (globalBrightnessEnabled)
+        {
+            savedAmbientLight = RenderSettings.ambientLight;
+            RenderSettings.ambientLight = Color.white;
+            if (spotlight != null)
+            {
+                savedSpotIntensity = spotlight.intensity;
+                spotlight.intensity = 80f;
+            }
+        }
+        else
+        {
+            RenderSettings.ambientLight = savedAmbientLight;
+            if (spotlight != null)
+            {
+                spotlight.intensity = savedSpotIntensity;
+            }
+        }
+    }
+
+    private void DrawKeyHelp()
+    {
+        if (!showKeyHelp)
+        {
+            return;
+        }
+
+        const float helpWidth = 320f;
+        const float helpHeight = 145f;
+        float x = Screen.width - helpWidth - 10f;
+        float y = Screen.height - helpHeight - 10f;
+
+        GUILayout.BeginArea(new Rect(x, y, helpWidth, helpHeight), GUI.skin.box);
+        GUILayout.Label("=== Key Help ===");
+        GUILayout.Label(globalBrightnessKey + ": Global brightness" + (Application.isPlaying && globalBrightnessEnabled ? " [ON]" : ""));
+        GUILayout.Label("C: Recenter calibration");
+        GUILayout.Label(toggleOverlayKey + ": Toggle debug overlay");
+        GUILayout.Label("1~4 / KP1~4: Jump to Stage 1~4");
+        GUILayout.Label("[ / ]: Prev / Next stage");
+        GUILayout.Label("F11: Toggle fullscreen");
+        GUILayout.EndArea();
     }
 
     private void ResolveReferences()
