@@ -22,6 +22,8 @@ public class PoseTestBootstrap : MonoBehaviour
     private const float ScreenHeightWorld = 3f;
     private const float ViewerHeight = 0.4f;
     private const float FrontScreenWidth = ScreenHeightWorld * (1920f / 1080f);
+    private const int WindowedDefaultWidth = 1920;
+    private const int WindowedDefaultHeight = 1080;
 
     [SerializeField] private bool buildOnStart = true;
     [SerializeField] private bool buildPreviewInEditMode = true;
@@ -30,6 +32,12 @@ public class PoseTestBootstrap : MonoBehaviour
     [SerializeField] private bool forceBlackEnvironmentInEditMode;
     [SerializeField] private bool disableOtherSceneLightsInEditMode;
     [SerializeField] private bool showDebugPointerVisuals;
+    [SerializeField] private bool startInFullscreen = true;
+    [SerializeField] private FullScreenMode fullscreenMode = FullScreenMode.FullScreenWindow;
+    [SerializeField] private bool allowFullscreenToggle = true;
+    [SerializeField] private KeyCode fullscreenToggleKey = KeyCode.F11;
+    [SerializeField] private int windowedWidth = WindowedDefaultWidth;
+    [SerializeField] private int windowedHeight = WindowedDefaultHeight;
     private bool hasBuilt;
     private bool editorPreviewQueued;
 
@@ -107,6 +115,11 @@ public class PoseTestBootstrap : MonoBehaviour
 
     private void Update()
     {
+        if (Application.isPlaying && allowFullscreenToggle && Input.GetKeyDown(fullscreenToggleKey))
+        {
+            ToggleFullscreenMode();
+        }
+
         UpdateSpotlightShaderGlobals();
     }
 
@@ -122,7 +135,7 @@ public class PoseTestBootstrap : MonoBehaviour
 
         if (isRuntimeBuild)
         {
-            Screen.SetResolution(1920, 1080, false);
+            ApplyInitialWindowMode();
             SetupDisplays();
         }
 
@@ -130,10 +143,42 @@ public class PoseTestBootstrap : MonoBehaviour
 
         ProjectionSurface frontSurface;
         ProjectionSurface leftSurface;
+        ProjectionSurface rightSurface;
         Transform viewerOrigin;
-        SetupDemoRig(out frontSurface, out leftSurface, out viewerOrigin);
-        SetupCameras(frontSurface, leftSurface, viewerOrigin);
+        SetupDemoRig(out frontSurface, out leftSurface, out rightSurface, out viewerOrigin);
+        SetupCameras(frontSurface, leftSurface, rightSurface, viewerOrigin);
         hasBuilt = isRuntimeBuild;
+    }
+
+    private void ApplyInitialWindowMode()
+    {
+        if (startInFullscreen)
+        {
+            Screen.fullScreenMode = fullscreenMode;
+            Screen.fullScreen = true;
+            return;
+        }
+
+        int targetWidth = Mathf.Max(640, windowedWidth);
+        int targetHeight = Mathf.Max(360, windowedHeight);
+        Screen.SetResolution(targetWidth, targetHeight, FullScreenMode.Windowed);
+        Screen.fullScreen = false;
+    }
+
+    private void ToggleFullscreenMode()
+    {
+        bool switchingToWindowed = Screen.fullScreen && Screen.fullScreenMode != FullScreenMode.Windowed;
+        if (switchingToWindowed)
+        {
+            int targetWidth = Mathf.Max(640, windowedWidth);
+            int targetHeight = Mathf.Max(360, windowedHeight);
+            Screen.SetResolution(targetWidth, targetHeight, FullScreenMode.Windowed);
+            Screen.fullScreen = false;
+            return;
+        }
+
+        Screen.fullScreenMode = fullscreenMode;
+        Screen.fullScreen = true;
     }
  
     private void SetupDisplays()
@@ -142,15 +187,23 @@ public class PoseTestBootstrap : MonoBehaviour
         {
             Display.displays[1].Activate();
         }
+
+        if (Display.displays.Length > 2)
+        {
+            Display.displays[2].Activate();
+        }
     }
 
-    private void SetupCameras(ProjectionSurface frontSurface, ProjectionSurface leftSurface, Transform viewerOrigin)
+    private void SetupCameras(ProjectionSurface frontSurface, ProjectionSurface leftSurface, ProjectionSurface rightSurface, Transform viewerOrigin)
     {
         Camera frontCamera = EnsureCamera("Main Camera", "MainCamera");
         ConfigureCamera(frontCamera, 0, 40f, frontSurface, viewerOrigin, false, false);
 
         Camera leftCamera = EnsureCamera("Left Projection Camera", null);
         ConfigureCamera(leftCamera, 1, 40f, leftSurface, viewerOrigin, false, false);
+
+        Camera rightCamera = EnsureCamera("Right Projection Camera", null);
+        ConfigureCamera(rightCamera, 2, 40f, rightSurface, viewerOrigin, false, false);
     }
 
     private static Camera EnsureCamera(string cameraName, string tagName)
@@ -192,7 +245,7 @@ public class PoseTestBootstrap : MonoBehaviour
         offAxisCamera.Configure(surface, eyePoint, flipHorizontally, flipVertically);
     }
 
-    private void SetupDemoRig(out ProjectionSurface frontSurface, out ProjectionSurface leftSurface, out Transform viewerOrigin)
+    private void SetupDemoRig(out ProjectionSurface frontSurface, out ProjectionSurface leftSurface, out ProjectionSurface rightSurface, out Transform viewerOrigin)
     {
         GameObject rigRoot = new GameObject(RigRootName);
         rigRoot.transform.SetParent(transform, false);
@@ -200,6 +253,7 @@ public class PoseTestBootstrap : MonoBehaviour
 
         frontSurface = CreateFrontSurface(rigRoot.transform);
         leftSurface = CreateLeftSurface(rigRoot.transform, frontSurface.Width);
+        rightSurface = CreateRightSurface(rigRoot.transform, frontSurface.Width);
         viewerOrigin = CreateViewerOrigin(rigRoot.transform);
         ViewerOriginTransform = viewerOrigin;
 
@@ -271,6 +325,19 @@ public class PoseTestBootstrap : MonoBehaviour
         leftSurfaceObject.transform.localRotation = Quaternion.Euler(0f, -90f, 0f);
 
         ProjectionSurface surface = leftSurfaceObject.AddComponent<ProjectionSurface>();
+        surface.Configure(FrontScreenWidth, ScreenHeightWorld);
+        return surface;
+    }
+
+    private static ProjectionSurface CreateRightSurface(Transform parent, float frontSurfaceWidth)
+    {
+        GameObject rightSurfaceObject = new GameObject("Right Surface");
+        rightSurfaceObject.name = "Right Surface";
+        rightSurfaceObject.transform.SetParent(parent, false);
+        rightSurfaceObject.transform.localPosition = new Vector3(frontSurfaceWidth * 0.5f, 0f, ScreenDistance - frontSurfaceWidth * 0.5f);
+        rightSurfaceObject.transform.localRotation = Quaternion.Euler(0f, 90f, 0f);
+
+        ProjectionSurface surface = rightSurfaceObject.AddComponent<ProjectionSurface>();
         surface.Configure(FrontScreenWidth, ScreenHeightWorld);
         return surface;
     }

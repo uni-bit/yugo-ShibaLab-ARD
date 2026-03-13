@@ -89,6 +89,7 @@ public class Stage2CompletionSequence : MonoBehaviour
     private float initialSpotIntensity;
     private Color initialAmbientColor;
     private Transform[] configuredCollapseTargets = new Transform[0];
+    private StageLightCodeLockPuzzle codeLockPuzzle;
 
     public bool IsPlaying => currentPhase != SequencePhase.Waiting && currentPhase != SequencePhase.Complete;
     public bool IsComplete => currentPhase == SequencePhase.Complete;
@@ -269,8 +270,27 @@ public class Stage2CompletionSequence : MonoBehaviour
     {
         currentPhase = SequencePhase.Collapsing;
         phaseElapsed = 0f;
+        ResolveCodeLockPuzzle();
+        if (codeLockPuzzle != null)
+        {
+            codeLockPuzzle.DisableSolvedGlowForCollapse();
+        }
         DisableCollapseTargetBehaviours();
         SpawnCollapsePieces();
+    }
+
+    private void ResolveCodeLockPuzzle()
+    {
+        if (codeLockPuzzle != null)
+        {
+            return;
+        }
+
+        codeLockPuzzle = GetComponent<StageLightCodeLockPuzzle>();
+        if (codeLockPuzzle == null && stageRoot != null)
+        {
+            codeLockPuzzle = stageRoot.GetComponent<StageLightCodeLockPuzzle>();
+        }
     }
 
     private void UpdateCollapse()
