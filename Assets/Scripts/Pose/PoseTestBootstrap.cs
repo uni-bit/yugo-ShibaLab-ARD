@@ -1,6 +1,10 @@
 using UnityEngine;
 using UnityEngine.Rendering;
 
+#if ENABLE_INPUT_SYSTEM
+using UnityEngine.InputSystem;
+#endif
+
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -115,12 +119,36 @@ public class PoseTestBootstrap : MonoBehaviour
 
     private void Update()
     {
-        if (Application.isPlaying && allowFullscreenToggle && Input.GetKeyDown(fullscreenToggleKey))
+        if (Application.isPlaying && allowFullscreenToggle && IsFullscreenTogglePressed())
         {
             ToggleFullscreenMode();
         }
 
         UpdateSpotlightShaderGlobals();
+    }
+
+    private bool IsFullscreenTogglePressed()
+    {
+        if (Input.GetKeyDown(fullscreenToggleKey))
+        {
+            return true;
+        }
+
+#if ENABLE_INPUT_SYSTEM
+        if (Keyboard.current == null)
+        {
+            return false;
+        }
+
+        if (fullscreenToggleKey == KeyCode.F11)
+        {
+            return Keyboard.current.f11Key.wasPressedThisFrame;
+        }
+
+        return false;
+#else
+        return false;
+#endif
     }
 
     [ContextMenu("Build Demo")]
@@ -198,12 +226,55 @@ public class PoseTestBootstrap : MonoBehaviour
     {
         Camera frontCamera = EnsureCamera("Main Camera", "MainCamera");
         ConfigureCamera(frontCamera, 0, 40f, frontSurface, viewerOrigin, false, false);
+        ConfigureBlankPrimaryDisplay(frontCamera);
 
         Camera leftCamera = EnsureCamera("Left Projection Camera", null);
         ConfigureCamera(leftCamera, 1, 40f, leftSurface, viewerOrigin, false, false);
 
         Camera rightCamera = EnsureCamera("Right Projection Camera", null);
         ConfigureCamera(rightCamera, 2, 40f, rightSurface, viewerOrigin, false, false);
+
+        DisableUnexpectedCameras(frontCamera, leftCamera, rightCamera);
+    }
+
+    private static void ConfigureBlankPrimaryDisplay(Camera frontCamera)
+    {
+        if (frontCamera == null)
+        {
+            return;
+        }
+
+        frontCamera.targetDisplay = 0;
+        frontCamera.clearFlags = CameraClearFlags.SolidColor;
+        frontCamera.backgroundColor = Color.black;
+        frontCamera.cullingMask = 0;
+
+        OffAxisProjectionCamera offAxis = frontCamera.GetComponent<OffAxisProjectionCamera>();
+        if (offAxis != null)
+        {
+            offAxis.enabled = false;
+        }
+    }
+
+    private static void DisableUnexpectedCameras(Camera frontCamera, Camera leftCamera, Camera rightCamera)
+    {
+        Camera[] allCameras = FindObjectsByType<Camera>(FindObjectsSortMode.None);
+        for (int index = 0; index < allCameras.Length; index++)
+        {
+            Camera camera = allCameras[index];
+            if (camera == null)
+            {
+                continue;
+            }
+
+            bool isManagedProjectionCamera = camera == frontCamera || camera == leftCamera || camera == rightCamera;
+            if (isManagedProjectionCamera)
+            {
+                continue;
+            }
+
+            camera.enabled = false;
+        }
     }
 
     private static Camera EnsureCamera(string cameraName, string tagName)
