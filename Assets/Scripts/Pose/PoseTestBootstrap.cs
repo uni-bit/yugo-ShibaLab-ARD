@@ -316,10 +316,12 @@ public class PoseTestBootstrap : MonoBehaviour
 
     private static void ConfigureCamera(Camera sceneCamera, int targetDisplay, float fieldOfView, ProjectionSurface surface, Transform eyePoint, bool flipHorizontally, bool flipVertically)
     {
+        sceneCamera.enabled = true;
         sceneCamera.transform.position = eyePoint != null ? eyePoint.position : Vector3.zero;
         sceneCamera.transform.rotation = eyePoint != null ? eyePoint.rotation : Quaternion.identity;
         sceneCamera.clearFlags = CameraClearFlags.SolidColor;
         sceneCamera.backgroundColor = Color.black;
+        sceneCamera.cullingMask = ~0;
         sceneCamera.fieldOfView = fieldOfView;
         sceneCamera.aspect = 1920f / 1080f;
         sceneCamera.targetDisplay = targetDisplay;
