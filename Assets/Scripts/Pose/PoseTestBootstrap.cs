@@ -41,7 +41,7 @@ public class PoseTestBootstrap : MonoBehaviour
     private const float FrontScreenWidth = 2.30f;
     private const float ScreenDistance = FrontScreenWidth * 0.5f;
     private const float ScreenHeightWorld = FrontScreenWidth * (1080f / 1920f);
-    private const float DefaultViewerDistanceFromScreens = 1.40f;
+    private const float DefaultViewerDistanceFromScreens = 1.55f;
     private const float ViewerHeight = 0f;
     private const int WindowedDefaultWidth = 1920;
     private const int WindowedDefaultHeight = 1080;

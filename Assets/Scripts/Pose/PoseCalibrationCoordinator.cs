@@ -34,6 +34,13 @@ public class PoseCalibrationCoordinator : MonoBehaviour
             ResetAllCalibration();
         }
 
+        if (receiver != null && receiver.ConsumePendingRecenterRequest())
+        {
+            lastHandledRecenterRequestCount = receiver.RecenterRequestCount;
+            ResetAllCalibration();
+            return;
+        }
+
         if (receiver != null && receiver.RecenterRequestCount != lastHandledRecenterRequestCount)
         {
             lastHandledRecenterRequestCount = receiver.RecenterRequestCount;

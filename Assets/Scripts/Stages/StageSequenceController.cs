@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 
 #if UNITY_EDITOR
@@ -134,11 +135,33 @@ public class StageSequenceController : MonoBehaviour
             return;
         }
 
-        StartCoroutine(transitionFader.FadeOutIn(() =>
+        StartCoroutine(FadeToStageWithSpotlightControl(stageIndex));
+    }
+
+    private IEnumerator FadeToStageWithSpotlightControl(int stageIndex)
+    {
+        ResolveRuntimeReferences();
+
+        Light activeSpotLight = poseBootstrap != null ? poseBootstrap.ActiveSpotLight : null;
+        bool hadSpotlight = activeSpotLight != null;
+        bool restoreEnabled = hadSpotlight && activeSpotLight.enabled;
+
+        if (hadSpotlight)
+        {
+            activeSpotLight.enabled = false;
+        }
+
+        yield return transitionFader.FadeOutIn(() =>
         {
             ApplyStageVisibility(stageIndex);
             RefreshActiveStageState();
-        }));
+        });
+
+        if (hadSpotlight)
+        {
+            RefreshActiveStageState();
+            activeSpotLight.enabled = restoreEnabled;
+        }
     }
 
     public void NextStage()

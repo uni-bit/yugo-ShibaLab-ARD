@@ -37,7 +37,7 @@ public class UdpQuaternionReceiver : MonoBehaviour
     [SerializeField] private bool stabilizeQuaternionHemisphere = true;
 
     [Header("Touch Input")]
-    [SerializeField] private float touchRecenterCooldownSeconds = 0.25f;
+    [SerializeField] private float touchRecenterCooldownSeconds = 0.6f;
 
     private readonly object syncRoot = new object();
     private static readonly Regex FloatRegex = new Regex(@"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?", RegexOptions.Compiled);
@@ -59,6 +59,7 @@ public class UdpQuaternionReceiver : MonoBehaviour
     private DateTime lastTouchRecenterTime = DateTime.MinValue;
     private bool touchInputActive;
     private int recenterRequestCount;
+    private int pendingRecenterRequests;
 
     public Quaternion LatestRawRotation { get; private set; } = Quaternion.identity;
     public Quaternion LatestStabilizedRawRotation { get; private set; } = Quaternion.identity;
@@ -109,6 +110,11 @@ public class UdpQuaternionReceiver : MonoBehaviour
         {
             return LatestConvertedRotation;
         }
+    }
+
+    public bool ConsumePendingRecenterRequest()
+    {
+        return Interlocked.Exchange(ref pendingRecenterRequests, 0) > 0;
     }
 
     public void ClearPendingRotation()
@@ -716,6 +722,61 @@ public class UdpQuaternionReceiver : MonoBehaviour
                     debugArguments.Add(intValue.ToString(CultureInfo.InvariantCulture));
                     break;
 
+                case 'd':
+                    if (payloadOffset + 8 > endIndex)
+                    {
+                        error = "OSC double payload is truncated.";
+                        return false;
+                    }
+
+                    double doubleValue = ReadDoubleBigEndian(data, payloadOffset);
+                    payloadOffset += 8;
+                    floatArguments.Add((float)doubleValue);
+                    debugArguments.Add(doubleValue.ToString("F6", CultureInfo.InvariantCulture));
+                    break;
+
+                case 'h':
+                    if (payloadOffset + 8 > endIndex)
+                    {
+                        error = "OSC int64 payload is truncated.";
+                        return false;
+                    }
+
+                    long longValue = ReadLongBigEndian(data, payloadOffset);
+                    payloadOffset += 8;
+                    debugArguments.Add(longValue.ToString(CultureInfo.InvariantCulture));
+                    break;
+
+                case 't':
+                    if (payloadOffset + 8 > endIndex)
+                    {
+                        error = "OSC timetag payload is truncated.";
+                        return false;
+                    }
+
+                    ulong timetag = (ulong)ReadLongBigEndian(data, payloadOffset);
+                    payloadOffset += 8;
+                    debugArguments.Add("timetag:" + timetag.ToString(CultureInfo.InvariantCulture));
+                    break;
+
+                case 'r':
+                case 'm':
+                case 'c':
+                    if (payloadOffset + 4 > endIndex)
+                    {
+                        error = "OSC 4-byte payload is truncated.";
+                        return false;
+                    }
+
+                    payloadOffset += 4;
+                    debugArguments.Add("0x" + ReadIntBigEndian(data, payloadOffset - 4).ToString("X8", CultureInfo.InvariantCulture));
+                    break;
+
+                case 'N':
+                case 'I':
+                    debugArguments.Add(tag == 'N' ? "nil" : "infinitum");
+                    break;
+
                 case 's':
                     int stringEnd = FindOscStringEnd(data, payloadOffset, endIndex);
                     if (stringEnd < 0)
@@ -879,6 +940,7 @@ public class UdpQuaternionReceiver : MonoBehaviour
             lastTouchRecenterTime = now;
             LastRecenterTime = DateTime.Now;
             Interlocked.Increment(ref recenterRequestCount);
+            Interlocked.Increment(ref pendingRecenterRequests);
             return true;
         }
     }
@@ -910,7 +972,14 @@ public class UdpQuaternionReceiver : MonoBehaviour
 
         if (message.FloatArguments != null && message.FloatArguments.Count == 1)
         {
-            return message.FloatArguments[0] > 0.5f;
+            string address = message.Address != null ? message.Address.ToLowerInvariant() : string.Empty;
+            bool isForceOrRadius = address.Contains("force") || address.Contains("radius");
+            if (isForceOrRadius)
+            {
+                return message.FloatArguments[0] > 0.0001f;
+            }
+
+            return true;
         }
 
         if (!string.IsNullOrEmpty(message.TypeTags)
@@ -1020,6 +1089,32 @@ public class UdpQuaternionReceiver : MonoBehaviour
         Array.Copy(data, offset, reversed, 0, 4);
         Array.Reverse(reversed);
         return BitConverter.ToInt32(reversed, 0);
+    }
+
+    private static long ReadLongBigEndian(byte[] data, int offset)
+    {
+        if (!BitConverter.IsLittleEndian)
+        {
+            return BitConverter.ToInt64(data, offset);
+        }
+
+        byte[] reversed = new byte[8];
+        Array.Copy(data, offset, reversed, 0, 8);
+        Array.Reverse(reversed);
+        return BitConverter.ToInt64(reversed, 0);
+    }
+
+    private static double ReadDoubleBigEndian(byte[] data, int offset)
+    {
+        if (!BitConverter.IsLittleEndian)
+        {
+            return BitConverter.ToDouble(data, offset);
+        }
+
+        byte[] reversed = new byte[8];
+        Array.Copy(data, offset, reversed, 0, 8);
+        Array.Reverse(reversed);
+        return BitConverter.ToDouble(reversed, 0);
     }
 
     private static float ReadFloatLittleEndian(byte[] data, int offset)
