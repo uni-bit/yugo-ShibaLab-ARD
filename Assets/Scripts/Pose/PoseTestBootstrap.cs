@@ -41,10 +41,8 @@ public class PoseTestBootstrap : MonoBehaviour
     [SerializeField] private KeyCode fullscreenToggleKey = KeyCode.F11;
     [SerializeField] private int windowedWidth = WindowedDefaultWidth;
     [SerializeField] private int windowedHeight = WindowedDefaultHeight;
-    [SerializeField] private int leftCameraTargetDisplayInEditor = 1;
-    [SerializeField] private int rightCameraTargetDisplayInEditor = 2;
-    [SerializeField] private int leftCameraTargetDisplayInBuild = 2;
-    [SerializeField] private int rightCameraTargetDisplayInBuild = 1;
+    [SerializeField] private int leftCameraTargetDisplay = 1;
+    [SerializeField] private int frontCameraTargetDisplay = 2;
     private bool hasBuilt;
     private bool editorPreviewQueued;
 
@@ -179,10 +177,9 @@ public class PoseTestBootstrap : MonoBehaviour
 
         ProjectionSurface frontSurface;
         ProjectionSurface leftSurface;
-        ProjectionSurface rightSurface;
         Transform viewerOrigin;
-        SetupDemoRig(out frontSurface, out leftSurface, out rightSurface, out viewerOrigin);
-        SetupCameras(frontSurface, leftSurface, rightSurface, viewerOrigin);
+        SetupDemoRig(out frontSurface, out leftSurface, out viewerOrigin);
+        SetupCameras(frontSurface, leftSurface, viewerOrigin);
         hasBuilt = isRuntimeBuild;
     }
 
@@ -230,19 +227,23 @@ public class PoseTestBootstrap : MonoBehaviour
         }
     }
 
-    private void SetupCameras(ProjectionSurface frontSurface, ProjectionSurface leftSurface, ProjectionSurface rightSurface, Transform viewerOrigin)
+    private void SetupCameras(ProjectionSurface frontSurface, ProjectionSurface leftSurface, Transform viewerOrigin)
     {
         Camera frontCamera = EnsureCamera("Main Camera", "MainCamera");
-        ConfigureCamera(frontCamera, 0, 40f, frontSurface, viewerOrigin, false, false);
-
-        int leftTargetDisplay = Application.isEditor ? leftCameraTargetDisplayInEditor : leftCameraTargetDisplayInBuild;
-        int rightTargetDisplay = Application.isEditor ? rightCameraTargetDisplayInEditor : rightCameraTargetDisplayInBuild;
+        ConfigureCamera(frontCamera, Mathf.Clamp(frontCameraTargetDisplay, 0, 7), 40f, frontSurface, viewerOrigin, false, false);
 
         Camera leftCamera = EnsureCamera("Left Projection Camera", null);
-        ConfigureCamera(leftCamera, Mathf.Clamp(leftTargetDisplay, 0, 7), 40f, leftSurface, viewerOrigin, false, false);
+        ConfigureCamera(leftCamera, Mathf.Clamp(leftCameraTargetDisplay, 0, 7), 40f, leftSurface, viewerOrigin, false, false);
 
-        Camera rightCamera = EnsureCamera("Right Projection Camera", null);
-        ConfigureCamera(rightCamera, Mathf.Clamp(rightTargetDisplay, 0, 7), 40f, rightSurface, viewerOrigin, false, false);
+        GameObject rightCameraObject = GameObject.Find("Right Projection Camera");
+        if (rightCameraObject != null)
+        {
+            Camera rightCamera = rightCameraObject.GetComponent<Camera>();
+            if (rightCamera != null)
+            {
+                rightCamera.enabled = false;
+            }
+        }
     }
 
     private static Camera EnsureCamera(string cameraName, string tagName)
@@ -284,7 +285,7 @@ public class PoseTestBootstrap : MonoBehaviour
         offAxisCamera.Configure(surface, eyePoint, flipHorizontally, flipVertically);
     }
 
-    private void SetupDemoRig(out ProjectionSurface frontSurface, out ProjectionSurface leftSurface, out ProjectionSurface rightSurface, out Transform viewerOrigin)
+    private void SetupDemoRig(out ProjectionSurface frontSurface, out ProjectionSurface leftSurface, out Transform viewerOrigin)
     {
         GameObject rigRoot = new GameObject(RigRootName);
         rigRoot.transform.SetParent(transform, false);
@@ -292,7 +293,6 @@ public class PoseTestBootstrap : MonoBehaviour
 
         frontSurface = CreateFrontSurface(rigRoot.transform);
         leftSurface = CreateLeftSurface(rigRoot.transform, frontSurface.Width);
-        rightSurface = CreateRightSurface(rigRoot.transform, frontSurface.Width);
         viewerOrigin = CreateViewerOrigin(rigRoot.transform);
         ViewerOriginTransform = viewerOrigin;
 
@@ -364,19 +364,6 @@ public class PoseTestBootstrap : MonoBehaviour
         leftSurfaceObject.transform.localRotation = Quaternion.Euler(0f, -90f, 0f);
 
         ProjectionSurface surface = leftSurfaceObject.AddComponent<ProjectionSurface>();
-        surface.Configure(FrontScreenWidth, ScreenHeightWorld);
-        return surface;
-    }
-
-    private static ProjectionSurface CreateRightSurface(Transform parent, float frontSurfaceWidth)
-    {
-        GameObject rightSurfaceObject = new GameObject("Right Surface");
-        rightSurfaceObject.name = "Right Surface";
-        rightSurfaceObject.transform.SetParent(parent, false);
-        rightSurfaceObject.transform.localPosition = new Vector3(frontSurfaceWidth * 0.5f, 0f, ScreenDistance - frontSurfaceWidth * 0.5f);
-        rightSurfaceObject.transform.localRotation = Quaternion.Euler(0f, 90f, 0f);
-
-        ProjectionSurface surface = rightSurfaceObject.AddComponent<ProjectionSurface>();
         surface.Configure(FrontScreenWidth, ScreenHeightWorld);
         return surface;
     }
