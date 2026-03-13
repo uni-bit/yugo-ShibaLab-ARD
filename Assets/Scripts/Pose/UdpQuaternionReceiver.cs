@@ -920,6 +920,11 @@ public class UdpQuaternionReceiver : MonoBehaviour
                 return false;
             }
 
+            if (touchInputActive)
+            {
+                return false;
+            }
+
             touchInputActive = true;
 
             DateTime now = DateTime.UtcNow;
