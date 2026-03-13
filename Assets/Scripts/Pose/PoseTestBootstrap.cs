@@ -45,6 +45,13 @@ public class PoseTestBootstrap : MonoBehaviour
     [SerializeField] private int frontCameraTargetDisplay = 2;
     private bool hasBuilt;
     private bool editorPreviewQueued;
+    private Camera frontProjectionCamera;
+    private Camera leftProjectionCamera;
+    private ProjectionSurface cachedFrontSurface;
+    private ProjectionSurface cachedLeftSurface;
+    private Transform cachedViewerOrigin;
+    private StageSequenceController stageSequenceController;
+    private int lastAppliedStageIndex = -1;
 
     private struct SceneLightState
     {
@@ -125,7 +132,49 @@ public class PoseTestBootstrap : MonoBehaviour
             ToggleFullscreenMode();
         }
 
+        if (Application.isPlaying)
+        {
+            ApplyStage3FrontCameraRoutingIfNeeded();
+        }
+
         UpdateSpotlightShaderGlobals();
+    }
+
+    private void ApplyStage3FrontCameraRoutingIfNeeded()
+    {
+        if (stageSequenceController == null)
+        {
+            stageSequenceController = FindFirstObjectByType<StageSequenceController>();
+        }
+
+        if (stageSequenceController == null)
+        {
+            return;
+        }
+
+        int activeStageIndex = stageSequenceController.CurrentStageIndex;
+        if (activeStageIndex == lastAppliedStageIndex)
+        {
+            return;
+        }
+
+        lastAppliedStageIndex = activeStageIndex;
+
+        if (activeStageIndex != 2)
+        {
+            return;
+        }
+
+        if (frontProjectionCamera == null || leftProjectionCamera == null || cachedFrontSurface == null || cachedLeftSurface == null || cachedViewerOrigin == null)
+        {
+            return;
+        }
+
+        frontProjectionCamera.enabled = true;
+        leftProjectionCamera.enabled = true;
+
+        ConfigureCamera(frontProjectionCamera, Mathf.Clamp(frontCameraTargetDisplay, 0, 7), 40f, cachedFrontSurface, cachedViewerOrigin, false, false);
+        ConfigureCamera(leftProjectionCamera, Mathf.Clamp(leftCameraTargetDisplay, 0, 7), 40f, cachedLeftSurface, cachedViewerOrigin, false, false);
     }
 
     private bool IsFullscreenTogglePressed()
@@ -229,11 +278,11 @@ public class PoseTestBootstrap : MonoBehaviour
 
     private void SetupCameras(ProjectionSurface frontSurface, ProjectionSurface leftSurface, Transform viewerOrigin)
     {
-        Camera frontCamera = EnsureCamera("Main Camera", "MainCamera");
-        ConfigureCamera(frontCamera, Mathf.Clamp(frontCameraTargetDisplay, 0, 7), 40f, frontSurface, viewerOrigin, false, false);
+        frontProjectionCamera = EnsureCamera("Main Camera", "MainCamera");
+        ConfigureCamera(frontProjectionCamera, Mathf.Clamp(frontCameraTargetDisplay, 0, 7), 40f, frontSurface, viewerOrigin, false, false);
 
-        Camera leftCamera = EnsureCamera("Left Projection Camera", null);
-        ConfigureCamera(leftCamera, Mathf.Clamp(leftCameraTargetDisplay, 0, 7), 40f, leftSurface, viewerOrigin, false, false);
+        leftProjectionCamera = EnsureCamera("Left Projection Camera", null);
+        ConfigureCamera(leftProjectionCamera, Mathf.Clamp(leftCameraTargetDisplay, 0, 7), 40f, leftSurface, viewerOrigin, false, false);
 
         GameObject rightCameraObject = GameObject.Find("Right Projection Camera");
         if (rightCameraObject != null)
@@ -294,6 +343,10 @@ public class PoseTestBootstrap : MonoBehaviour
         frontSurface = CreateFrontSurface(rigRoot.transform);
         leftSurface = CreateLeftSurface(rigRoot.transform, frontSurface.Width);
         viewerOrigin = CreateViewerOrigin(rigRoot.transform);
+        cachedFrontSurface = frontSurface;
+        cachedLeftSurface = leftSurface;
+        cachedViewerOrigin = viewerOrigin;
+        lastAppliedStageIndex = -1;
         ViewerOriginTransform = viewerOrigin;
 
         GameObject rotationPivot = new GameObject(RotationPivotName);
