@@ -38,10 +38,13 @@ public class PoseTestBootstrap : MonoBehaviour
     [SerializeField] private bool showDebugPointerVisuals;
     [SerializeField] private bool startInFullscreen = true;
     [SerializeField] private FullScreenMode fullscreenMode = FullScreenMode.FullScreenWindow;
-    [SerializeField] private bool allowFullscreenToggle = true;
     [SerializeField] private KeyCode fullscreenToggleKey = KeyCode.F11;
     [SerializeField] private int windowedWidth = WindowedDefaultWidth;
     [SerializeField] private int windowedHeight = WindowedDefaultHeight;
+    [SerializeField] private int leftCameraTargetDisplayInEditor = 1;
+    [SerializeField] private int rightCameraTargetDisplayInEditor = 2;
+    [SerializeField] private int leftCameraTargetDisplayInBuild = 2;
+    [SerializeField] private int rightCameraTargetDisplayInBuild = 1;
     private bool hasBuilt;
     private bool editorPreviewQueued;
 
@@ -119,7 +122,7 @@ public class PoseTestBootstrap : MonoBehaviour
 
     private void Update()
     {
-        if (Application.isPlaying && allowFullscreenToggle && IsFullscreenTogglePressed())
+        if (Application.isPlaying && IsFullscreenTogglePressed())
         {
             ToggleFullscreenMode();
         }
@@ -129,6 +132,11 @@ public class PoseTestBootstrap : MonoBehaviour
 
     private bool IsFullscreenTogglePressed()
     {
+        if (Input.GetKeyDown(KeyCode.F11))
+        {
+            return true;
+        }
+
         if (Input.GetKeyDown(fullscreenToggleKey))
         {
             return true;
@@ -226,55 +234,15 @@ public class PoseTestBootstrap : MonoBehaviour
     {
         Camera frontCamera = EnsureCamera("Main Camera", "MainCamera");
         ConfigureCamera(frontCamera, 0, 40f, frontSurface, viewerOrigin, false, false);
-        ConfigureBlankPrimaryDisplay(frontCamera);
+
+        int leftTargetDisplay = Application.isEditor ? leftCameraTargetDisplayInEditor : leftCameraTargetDisplayInBuild;
+        int rightTargetDisplay = Application.isEditor ? rightCameraTargetDisplayInEditor : rightCameraTargetDisplayInBuild;
 
         Camera leftCamera = EnsureCamera("Left Projection Camera", null);
-        ConfigureCamera(leftCamera, 1, 40f, leftSurface, viewerOrigin, false, false);
+        ConfigureCamera(leftCamera, Mathf.Clamp(leftTargetDisplay, 0, 7), 40f, leftSurface, viewerOrigin, false, false);
 
         Camera rightCamera = EnsureCamera("Right Projection Camera", null);
-        ConfigureCamera(rightCamera, 2, 40f, rightSurface, viewerOrigin, false, false);
-
-        DisableUnexpectedCameras(frontCamera, leftCamera, rightCamera);
-    }
-
-    private static void ConfigureBlankPrimaryDisplay(Camera frontCamera)
-    {
-        if (frontCamera == null)
-        {
-            return;
-        }
-
-        frontCamera.targetDisplay = 0;
-        frontCamera.clearFlags = CameraClearFlags.SolidColor;
-        frontCamera.backgroundColor = Color.black;
-        frontCamera.cullingMask = 0;
-
-        OffAxisProjectionCamera offAxis = frontCamera.GetComponent<OffAxisProjectionCamera>();
-        if (offAxis != null)
-        {
-            offAxis.enabled = false;
-        }
-    }
-
-    private static void DisableUnexpectedCameras(Camera frontCamera, Camera leftCamera, Camera rightCamera)
-    {
-        Camera[] allCameras = FindObjectsByType<Camera>(FindObjectsSortMode.None);
-        for (int index = 0; index < allCameras.Length; index++)
-        {
-            Camera camera = allCameras[index];
-            if (camera == null)
-            {
-                continue;
-            }
-
-            bool isManagedProjectionCamera = camera == frontCamera || camera == leftCamera || camera == rightCamera;
-            if (isManagedProjectionCamera)
-            {
-                continue;
-            }
-
-            camera.enabled = false;
-        }
+        ConfigureCamera(rightCamera, Mathf.Clamp(rightTargetDisplay, 0, 7), 40f, rightSurface, viewerOrigin, false, false);
     }
 
     private static Camera EnsureCamera(string cameraName, string tagName)

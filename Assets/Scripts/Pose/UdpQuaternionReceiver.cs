@@ -887,13 +887,20 @@ public class UdpQuaternionReceiver : MonoBehaviour
         string[] parts = normalized.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
         for (int index = 0; index < parts.Length; index++)
         {
-            if (parts[index].Contains("touch"))
+            string part = parts[index];
+            if (part.Contains("touch")
+                || part.Contains("2d")
+                || part.Contains("pointer")
+                || part.Contains("tap"))
             {
                 return true;
             }
         }
 
-        return normalized.Contains("touch");
+        return normalized.Contains("touch")
+            || normalized.Contains("2d")
+            || normalized.Contains("pointer")
+            || normalized.Contains("tap");
     }
 
     private static string NormalizeComponentName(string value)
