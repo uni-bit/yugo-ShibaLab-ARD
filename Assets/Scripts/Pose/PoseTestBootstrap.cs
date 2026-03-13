@@ -541,9 +541,9 @@ public class PoseTestBootstrap : MonoBehaviour
         RestoreManagedSceneLights();
     }
 
-#if UNITY_EDITOR
     private void QueueEditorPreviewBuild()
     {
+#if UNITY_EDITOR
         if (editorPreviewQueued || EditorApplication.isPlayingOrWillChangePlaymode)
         {
             return;
@@ -551,10 +551,12 @@ public class PoseTestBootstrap : MonoBehaviour
 
         editorPreviewQueued = true;
         EditorApplication.delayCall += RebuildEditorPreview;
+#endif
     }
 
     private void RebuildEditorPreview()
     {
+#if UNITY_EDITOR
         editorPreviewQueued = false;
 
         if (this == null || Application.isPlaying || !buildPreviewInEditMode)
@@ -563,8 +565,8 @@ public class PoseTestBootstrap : MonoBehaviour
         }
 
         BuildDemoInternal(false);
+ #endif
     }
-#endif
 
     private T EnsureComponent<T>() where T : Component
     {
