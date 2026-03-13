@@ -64,7 +64,6 @@ public class UdpQuaternionReceiver : MonoBehaviour
     private int recenterRequestCount;
     private int pendingRecenterRequests;
     private int touchPacketCount;
-    private string lastTouchStatus = "No touch received";
 
     public Quaternion LatestRawRotation { get; private set; } = Quaternion.identity;
     public Quaternion LatestStabilizedRawRotation { get; private set; } = Quaternion.identity;

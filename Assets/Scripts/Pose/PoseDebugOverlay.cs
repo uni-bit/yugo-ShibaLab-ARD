@@ -60,7 +60,7 @@ public class PoseDebugOverlay : MonoBehaviour
                 (System.DateTime.Now - receiver.LastReceivedTime).TotalSeconds);
         }
 
-        GUILayout.BeginArea(new Rect(10f, 10f, 760f, showPacketDebug ? 420f : 210f), GUI.skin.box);
+        GUILayout.BeginArea(new Rect(10f, 10f, 760f, showPacketDebug ? 560f : 330f), GUI.skin.box);
         GUILayout.Label("UDP Pose Receiver Debug");
         GUILayout.Label("Status: " + lastStatus);
         GUILayout.Label("Sender: " + lastSender);
