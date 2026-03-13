@@ -19,6 +19,15 @@ public class Stage3RockHintPuzzle : MonoBehaviour
 {
     private const string EmissiveShellName = "Stage3 Emissive Shell";
 
+    [System.Serializable]
+    private struct LoopingLiftTarget
+    {
+        public Transform Target;
+        public float MinY;
+        public float MaxY;
+        public float UpSpeed;
+    }
+
     private enum FinalePhase
     {
         None,
@@ -37,19 +46,21 @@ public class Stage3RockHintPuzzle : MonoBehaviour
     [SerializeField] private Color greenGlowColor = new Color(0.28f, 0.95f, 0.42f, 1f);
     [SerializeField] private Color blueGlowColor = new Color(0.24f, 0.62f, 1f, 1f);
     [SerializeField] private float inactiveColorMultiplier = 0.28f;
-    [SerializeField] private float pedestalEmissionIntensity = 3.8f;
-    [SerializeField] private float hintRockEmissionIntensity = 7.2f;
-    [SerializeField] private float redPedestalEmissionIntensity = 4.8f;
+    [SerializeField] private float pedestalEmissionIntensity = 1.15f;
+    [SerializeField] private float hintRockEmissionIntensity = 1.55f;
+    [SerializeField] private float redPedestalEmissionIntensity = 1.35f;
     [SerializeField] private float inactiveEmissionIntensity = 0f;
-    [SerializeField] private float pedestalGlowLightIntensity = 1.05f;
-    [SerializeField] private float hintGlowLightIntensity = 1.45f;
-    [SerializeField] private float redPedestalGlowLightIntensity = 1.2f;
+    [SerializeField] private float pedestalGlowLightIntensity = 0.52f;
+    [SerializeField] private float hintGlowLightIntensity = 0.68f;
+    [SerializeField] private float redPedestalGlowLightIntensity = 0.6f;
     [SerializeField] private float glowLightRange = 2.3f;
     [SerializeField] private float emissiveShellScale = 1.07f;
-    [SerializeField] private float emissiveShellAlpha = 0.72f;
+    [SerializeField] private float emissiveShellAlpha = 0.34f;
+    [SerializeField] private float maxRockEmissionIntensity = 1.4f;
     [SerializeField] private float hintHoldSeconds = 1f;
     [SerializeField] private float hintActivationExposureThreshold = 0.045f;
     [SerializeField, Range(0.05f, 1f)] private float hintCenterZoneNormalizedRadius = 0.35f;
+    [SerializeField] private bool requireHintCenterZone = false;
     [SerializeField] private float localRevealDuration = 2f;
     [SerializeField] private float brightenDuration = 1.1f;
     [SerializeField] private float holdBeforeStageTransitionSeconds = 1f;
@@ -67,6 +78,7 @@ public class Stage3RockHintPuzzle : MonoBehaviour
     [SerializeField] private int burstParticleCount = 22;
     [SerializeField] private float burstSpeed = 2.8f;
     [SerializeField] private float burstLifetime = 0.85f;
+    [SerializeField] private LoopingLiftTarget[] loopingLiftTargets = new LoopingLiftTarget[0];
 
     private SpotlightSensor greenHintSensor;
     private SpotlightSensor blueHintSensor;
@@ -142,6 +154,7 @@ public class Stage3RockHintPuzzle : MonoBehaviour
 
         UpdateHintActivation(greenHintSensor, ref greenHintHoldTimer, ref greenActivated, greenHintRock, greenGlowColor, ref greenHintBurstPlayed, greenPedestalRock, ref greenPedestalBurstPlayed);
         UpdateHintActivation(blueHintSensor, ref blueHintHoldTimer, ref blueActivated, blueHintRock, blueGlowColor, ref blueHintBurstPlayed, bluePedestalRock, ref bluePedestalBurstPlayed);
+        UpdateLoopingLiftTargets();
 
         if (greenActivated && blueActivated)
         {
@@ -288,6 +301,11 @@ public class Stage3RockHintPuzzle : MonoBehaviour
             return false;
         }
 
+        if (!requireHintCenterZone)
+        {
+            return true;
+        }
+
         Light sourceLight = sensor.SourceLight;
         if (sourceLight == null || sourceLight.type != LightType.Spot || sourceLight.spotAngle <= 0.001f)
         {
@@ -304,6 +322,36 @@ public class Stage3RockHintPuzzle : MonoBehaviour
         float halfAngle = sourceLight.spotAngle * 0.5f;
         float normalized = angleToTarget / Mathf.Max(halfAngle, 0.0001f);
         return normalized <= hintCenterZoneNormalizedRadius;
+    }
+
+    private void UpdateLoopingLiftTargets()
+    {
+        if (loopingLiftTargets == null || loopingLiftTargets.Length == 0)
+        {
+            return;
+        }
+
+        for (int index = 0; index < loopingLiftTargets.Length; index++)
+        {
+            LoopingLiftTarget entry = loopingLiftTargets[index];
+            if (entry.Target == null)
+            {
+                continue;
+            }
+
+            float maxY = Mathf.Max(entry.MinY, entry.MaxY);
+            float minY = Mathf.Min(entry.MinY, entry.MaxY);
+            float speed = Mathf.Max(0f, entry.UpSpeed);
+
+            Vector3 position = entry.Target.position;
+            position.y += speed * Time.deltaTime;
+            if (position.y >= maxY)
+            {
+                position.y = minY;
+            }
+
+            entry.Target.position = position;
+        }
     }
 
     private void UpdateFinale()
@@ -344,7 +392,8 @@ public class Stage3RockHintPuzzle : MonoBehaviour
         Renderer[] renderers = visualCache.Renderers;
         Color appliedColor = isActive ? glowColor : glowColor * inactiveColorMultiplier;
         float emissionIntensity = isActive ? activeEmissionIntensity : inactiveEmissionIntensity;
-        Color emissionColor = glowColor.linear * emissionIntensity;
+        float clampedEmissionIntensity = Mathf.Clamp(emissionIntensity, 0f, maxRockEmissionIntensity);
+        Color emissionColor = glowColor * clampedEmissionIntensity;
         Color shellColor = new Color(glowColor.r, glowColor.g, glowColor.b, isActive ? emissiveShellAlpha : 0f);
 
         for (int index = 0; index < renderers.Length; index++)
@@ -837,37 +886,7 @@ public class Stage3RockHintPuzzle : MonoBehaviour
 
             state.Renderer.SetPropertyBlock(state.PropertyBlock);
 
-            Material sharedMaterial = state.Renderer.sharedMaterial;
-            if (sharedMaterial == null)
-            {
-                continue;
-            }
-
-            if (state.HasBaseColor)
-            {
-                sharedMaterial.SetColor("_BaseColor", Color.Lerp(state.BaseColor, finalBrightnessColor, progress));
-            }
-
-            if (state.HasAlbedoColor)
-            {
-                sharedMaterial.color = Color.Lerp(state.AlbedoColor, finalBrightnessColor, progress);
-            }
-
-            if (state.HasLitColor)
-            {
-                sharedMaterial.SetColor("_LitColor", Color.Lerp(state.LitColor, finalBrightnessColor, progress));
-            }
-
-            if (state.HasHiddenColor)
-            {
-                sharedMaterial.SetColor("_HiddenColor", Color.Lerp(state.HiddenColor, revealedHiddenColor, progress));
-            }
-
-            if (state.HasEmissionColor)
-            {
-                sharedMaterial.SetColor("_EmissionColor", finalBrightnessColor * (progress * emissionBoost));
-                sharedMaterial.EnableKeyword("_EMISSION");
-            }
+            // Avoid writing shared materials every frame to reduce Stage3 CPU spikes.
         }
     }
 

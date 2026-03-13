@@ -543,7 +543,7 @@ public static class StageSequenceDebugBuilder
             GameObject upButton = EnsureCodeLockButton(columnRoot, "Up Button", new Vector3(0f, 0.95f, 0f), "▲");
             GameObject display = EnsureCodeLockDisplay(columnRoot, "Digit Display", new Vector3(0f, 0f, 0f), "0");
             GameObject downButton = EnsureCodeLockButton(columnRoot, "Down Button", new Vector3(0f, -0.95f, 0f), "▼");
-            EnsureDigitSegmentBox(columnRoot, "Digit Segment", new Vector3(0f, 0f, -0.08f), new Vector3(1.3f, 0.88f, 0.08f));
+            EnsureDigitSegmentBox(columnRoot, "Digit Segment", new Vector3(0f, 0f, -0.08f), new Vector3(1.32f, 0.92f, 0.08f));
 
             SpotlightSensor upSensor = EnsureSensor(upButton, upButton.transform, upButton.GetComponent<Renderer>(), upButton.GetComponent<Collider>());
             SpotlightSensor downSensor = EnsureSensor(downButton, downButton.transform, downButton.GetComponent<Renderer>(), downButton.GetComponent<Collider>());
@@ -716,26 +716,52 @@ public static class StageSequenceDebugBuilder
 
     private static GameObject EnsureDigitSegmentBox(Transform parent, string name, Vector3 localPosition, Vector3 localScale)
     {
-        bool existed = parent.Find(name) != null;
-        GameObject segment = EnsurePrimitive(parent, name, PrimitiveType.Cube, localPosition, localScale);
-        if (!existed)
-        {
-            segment.transform.localPosition = localPosition;
-            segment.transform.localRotation = Quaternion.identity;
-            segment.transform.localScale = localScale;
-        }
+        Transform existing = parent.Find(name);
+        GameObject segment = existing != null ? existing.gameObject : new GameObject(name);
+        segment.name = name;
+        segment.transform.SetParent(parent, false);
+        segment.transform.localPosition = localPosition;
+        segment.transform.localRotation = Quaternion.identity;
+        segment.transform.localScale = Vector3.one;
 
-        SetRendererColor(segment, new Color(0.16f, 0.18f, 0.2f, 1f));
-        Renderer segmentRenderer = segment.GetComponent<Renderer>();
-        if (segmentRenderer != null)
-        {
-            StageSpotlightMaterialUtility.ApplySpotlitRenderer(
-                segmentRenderer,
-                new Color(0.25f, 0.35f, 0.45f, 0f),
-                new Color(0.88f, 0.95f, 1f, 1f));
-        }
+        RemoveComponentIfExists<LineRenderer>(segment);
+
+        const float frameThickness = 0.08f;
+        float frameWidth = 1.3162f;
+        float frameHeight = 2.847f;
+        float frameDepth = Mathf.Max(0.04f, localScale.z);
+
+        GameObject topEdge = EnsurePrimitive(segment.transform, "Frame Top", PrimitiveType.Cube, new Vector3(0f, frameHeight * 0.5f, 0f), new Vector3(frameWidth, frameThickness, frameDepth));
+        GameObject bottomEdge = EnsurePrimitive(segment.transform, "Frame Bottom", PrimitiveType.Cube, new Vector3(0f, -frameHeight * 0.5f, 0f), new Vector3(frameWidth, frameThickness, frameDepth));
+        GameObject leftEdge = EnsurePrimitive(segment.transform, "Frame Left", PrimitiveType.Cube, new Vector3(-frameWidth * 0.5f, 0f, 0f), new Vector3(frameThickness, frameHeight, frameDepth));
+        GameObject rightEdge = EnsurePrimitive(segment.transform, "Frame Right", PrimitiveType.Cube, new Vector3(frameWidth * 0.5f, 0f, 0f), new Vector3(frameThickness, frameHeight, frameDepth));
+
+        ApplySegmentFrameVisual(topEdge);
+        ApplySegmentFrameVisual(bottomEdge);
+        ApplySegmentFrameVisual(leftEdge);
+        ApplySegmentFrameVisual(rightEdge);
 
         return segment;
+    }
+
+    private static void ApplySegmentFrameVisual(GameObject edge)
+    {
+        if (edge == null)
+        {
+            return;
+        }
+
+        SetRendererColor(edge, new Color(0.88f, 0.95f, 1f, 1f));
+        Renderer edgeRenderer = edge.GetComponent<Renderer>();
+        if (edgeRenderer == null)
+        {
+            return;
+        }
+
+        StageSpotlightMaterialUtility.ApplySpotlitRenderer(
+            edgeRenderer,
+            new Color(0.25f, 0.35f, 0.45f, 0f),
+            new Color(0.88f, 0.95f, 1f, 1f));
     }
 
     private static StageCodeLockButtonIndicator EnsureCodeLockButtonIndicator(Transform columnRoot, GameObject button, string arrowName, SpotlightSensor sensor)

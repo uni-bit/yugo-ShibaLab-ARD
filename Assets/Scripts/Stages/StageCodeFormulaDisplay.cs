@@ -120,11 +120,12 @@ public class StageCodeFormulaDisplay : MonoBehaviour
 
         float spacing = 1.05f;
         float startX = -2.1f;
+        float questionX = 2.31f;
         ConfigureCircle(circleRenderer, new Vector3(startX + (spacing * 0f), 0f, 0f));
         ConfigureTriangle(triangleRenderer, new Vector3(startX + (spacing * 1f), -0.01f, 0f));
         ConfigureSquare(squareRenderer, new Vector3(startX + (spacing * 2f), 0f, 0f));
         ConfigureFormulaText(equalsText, "=", ApplyLayoutOffset(new Vector3(startX + (spacing * 3f), 0f, 0f)), 0.09f, 180);
-        ConfigureFormulaText(questionText, "???", ApplyLayoutOffset(new Vector3(startX + (spacing * 4f), 0f, 0f)), 0.09f, 180);
+        ConfigureFormulaText(questionText, "???", ApplyLayoutOffset(new Vector3(questionX, 0f, 0f)), 0.09f, 180);
         ConfigureFrame(frameRenderer, ApplyLayoutOffset(new Vector3(0f, 0f, 0f)), new Vector2(6.2f, 1.45f), 0.04f);
 
         layoutInitialized = true;
