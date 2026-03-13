@@ -55,9 +55,9 @@ public class Stage2CompletionSequence : MonoBehaviour
     [SerializeField] private Transform[] collapseTargets = new Transform[0];
     [SerializeField] private Transform panelTransform;
     [SerializeField] private Transform stageRoot;
-    [SerializeField] private float solvedPauseSeconds = 2f;
+    [SerializeField] private float solvedPauseSeconds = 3.25f;
     [SerializeField] private float lightExpandDuration = 0.75f;
-    [SerializeField] private float collapseDuration = 1.75f;
+    [SerializeField] private float collapseDuration = 3.1f;
     [SerializeField] private Vector2 collapseHorizontalSpeedRange = new Vector2(0.9f, 2.6f);
     [SerializeField] private Vector2 collapseVerticalSpeedRange = new Vector2(0.8f, 2.1f);
     [SerializeField] private float collapseGravity = 4.8f;
@@ -70,6 +70,7 @@ public class Stage2CompletionSequence : MonoBehaviour
     [SerializeField] private float selfMoveDuration = 3.6f;
     [SerializeField] private float selfMoveDistance = 6f;
     [SerializeField] private float selfMoveHeight = 0f;
+    [SerializeField] private bool keepCollapsedDebrisUntilTransition = true;
     [SerializeField] private Color finalBrightnessColor = new Color(1f, 0.96f, 0.84f, 1f);
     [SerializeField] private float emissionBoost = 2.4f;
     [SerializeField] private float finalLightIntensity = 6f;
@@ -327,17 +328,20 @@ public class Stage2CompletionSequence : MonoBehaviour
             return;
         }
 
-        for (int index = 0; index < collapsePieces.Count; index++)
+        if (!keepCollapsedDebrisUntilTransition)
         {
-            if (collapsePieces[index] != null && collapsePieces[index].Transform != null)
+            for (int index = 0; index < collapsePieces.Count; index++)
             {
-                Destroy(collapsePieces[index].Transform.gameObject);
+                if (collapsePieces[index] != null && collapsePieces[index].Transform != null)
+                {
+                    Destroy(collapsePieces[index].Transform.gameObject);
+                }
             }
+
+            collapsePieces.Clear();
         }
 
-        collapsePieces.Clear();
-
-        if (collapseRoot != null)
+        if (!keepCollapsedDebrisUntilTransition && collapseRoot != null)
         {
             Destroy(collapseRoot.gameObject);
         }

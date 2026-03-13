@@ -41,6 +41,7 @@ public class PoseTestBootstrap : MonoBehaviour
     private const float FrontScreenWidth = 2.30f;
     private const float ScreenDistance = FrontScreenWidth * 0.5f;
     private const float ScreenHeightWorld = FrontScreenWidth * (1080f / 1920f);
+    private const float DefaultViewerDistanceFromScreens = 1.40f;
     private const float ViewerHeight = 0f;
     private const int WindowedDefaultWidth = 1920;
     private const int WindowedDefaultHeight = 1080;
@@ -59,6 +60,7 @@ public class PoseTestBootstrap : MonoBehaviour
     [SerializeField] private int windowedHeight = WindowedDefaultHeight;
     [SerializeField] private int leftCameraTargetDisplay = 1;
     [SerializeField] private int frontCameraTargetDisplay = 2;
+    [SerializeField] private float viewerDistanceFromScreens = DefaultViewerDistanceFromScreens;
     private bool hasBuilt;
     private bool editorPreviewQueued;
     private Camera frontProjectionCamera;
@@ -369,8 +371,9 @@ public class PoseTestBootstrap : MonoBehaviour
 
         GameObject rotationPivot = new GameObject(RotationPivotName);
         rotationPivot.transform.SetParent(rigRoot.transform, false);
-        rotationPivot.transform.localPosition = Vector3.zero;
+        rotationPivot.transform.localPosition = viewerOrigin.localPosition;
         rotationPivot.transform.localRotation = Quaternion.identity;
+        AlignRotationPivotToDualScreenCenter(rotationPivot.transform, frontSurface, leftSurface);
 
         UdpQuaternionReceiver receiver = EnsureComponent<UdpQuaternionReceiver>();
         PoseCalibrationCoordinator calibrationCoordinator = EnsureComponent<PoseCalibrationCoordinator>();
@@ -406,9 +409,19 @@ public class PoseTestBootstrap : MonoBehaviour
 
     private static Transform CreateViewerOrigin(Transform parent)
     {
+        float distanceFromFrontScreen = Mathf.Max(0.05f, DefaultViewerDistanceFromScreens);
+        PoseTestBootstrap bootstrap = parent != null ? parent.GetComponentInParent<PoseTestBootstrap>() : null;
+        if (bootstrap != null)
+        {
+            distanceFromFrontScreen = Mathf.Max(0.05f, bootstrap.viewerDistanceFromScreens);
+        }
+
+        float viewerX = (-FrontScreenWidth * 0.5f) + distanceFromFrontScreen;
+        float viewerZ = ScreenDistance - distanceFromFrontScreen;
+
         GameObject viewerObject = new GameObject(ViewerOriginName);
         viewerObject.transform.SetParent(parent, false);
-        viewerObject.transform.localPosition = new Vector3(0f, ViewerHeight, 0f);
+        viewerObject.transform.localPosition = new Vector3(viewerX, ViewerHeight, viewerZ);
         viewerObject.transform.localRotation = Quaternion.identity;
         return viewerObject.transform;
     }
@@ -437,6 +450,23 @@ public class PoseTestBootstrap : MonoBehaviour
         ProjectionSurface surface = leftSurfaceObject.AddComponent<ProjectionSurface>();
         surface.Configure(FrontScreenWidth, ScreenHeightWorld);
         return surface;
+    }
+
+    private static void AlignRotationPivotToDualScreenCenter(Transform rotationPivot, ProjectionSurface frontSurface, ProjectionSurface leftSurface)
+    {
+        if (rotationPivot == null || frontSurface == null || leftSurface == null)
+        {
+            return;
+        }
+
+        Vector3 targetPoint = (frontSurface.transform.position + leftSurface.transform.position) * 0.5f;
+        Vector3 direction = targetPoint - rotationPivot.position;
+        if (direction.sqrMagnitude <= 0.0001f)
+        {
+            return;
+        }
+
+        rotationPivot.rotation = Quaternion.LookRotation(direction.normalized, Vector3.up);
     }
 
     private void ClearExistingRig()

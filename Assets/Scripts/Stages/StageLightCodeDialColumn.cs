@@ -145,7 +145,8 @@ public class StageLightCodeDialColumn : MonoBehaviour
     private void SetDigit(int nextDigit, int direction = 0)
     {
         CurrentDigit = ((nextDigit % 10) + 10) % 10;
-        if (digitAnimator != null)
+        bool hasAnimator = digitAnimator != null;
+        if (hasAnimator)
         {
             if (direction == 0)
             {
@@ -157,7 +158,7 @@ public class StageLightCodeDialColumn : MonoBehaviour
             }
         }
 
-        if (digitText != null)
+        if (digitText != null && (!hasAnimator || direction == 0))
         {
             digitText.text = CurrentDigit.ToString();
         }

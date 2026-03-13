@@ -58,13 +58,14 @@ public class UdpQuaternionReceiver : MonoBehaviour
     private bool hasW;
     private DateTime lastTouchRecenterTime = DateTime.MinValue;
     private bool touchInputActive;
+    private int recenterRequestCount;
 
     public Quaternion LatestRawRotation { get; private set; } = Quaternion.identity;
     public Quaternion LatestStabilizedRawRotation { get; private set; } = Quaternion.identity;
     public Quaternion LatestConvertedRotation { get; private set; } = Quaternion.identity;
     public QuaternionCoordinatePreset CoordinatePreset => coordinatePreset;
     public int ReceivedPacketCount { get; private set; }
-    public int RecenterRequestCount { get; private set; }
+    public int RecenterRequestCount => Volatile.Read(ref recenterRequestCount);
     public DateTime LastRecenterTime { get; private set; } = DateTime.MinValue;
     public string LastSender { get; private set; } = "-";
     public string LastStatus { get; private set; } = "Waiting for UDP packets...";
@@ -197,9 +198,15 @@ public class UdpQuaternionReceiver : MonoBehaviour
                 bool touchTriggered = false;
                 List<OscMessage> oscMessages;
                 string oscError;
-                if (TryParseOscPacket(packet, out oscMessages, out oscError))
+                bool hasOscMessages = TryParseOscPacket(packet, out oscMessages, out oscError);
+                if (hasOscMessages)
                 {
                     touchTriggered = TryRequestRecenterFromTouchMessages(oscMessages);
+                }
+
+                if (!touchTriggered)
+                {
+                    touchTriggered = TryRequestRecenterFromRawPayload(packet);
                 }
 
                 QuaternionPacketParseResult parseResult = TryParseQuaternionPacket(packet);
@@ -789,12 +796,7 @@ public class UdpQuaternionReceiver : MonoBehaviour
     {
         if (messages == null || messages.Count == 0)
         {
-            lock (syncRoot)
-            {
-                touchInputActive = false;
-            }
-
-            return false;
+            return TryRequestRecenterFromTouchState(false);
         }
 
         bool hasActiveTouch = false;
@@ -807,6 +809,48 @@ public class UdpQuaternionReceiver : MonoBehaviour
             }
         }
 
+        return TryRequestRecenterFromTouchState(hasActiveTouch);
+    }
+
+    private bool TryRequestRecenterFromRawPayload(byte[] payload)
+    {
+        if (payload == null || payload.Length == 0)
+        {
+            return false;
+        }
+
+        string textPayload = Encoding.UTF8.GetString(payload).Trim('\0', ' ', '\r', '\n', '\t').ToLowerInvariant();
+        if (string.IsNullOrEmpty(textPayload)
+            || (!textPayload.Contains("touch")
+                && !textPayload.Contains("pointer")
+                && !textPayload.Contains("tap")
+                && !textPayload.Contains("press")))
+        {
+            return false;
+        }
+
+        bool hasActiveTouch = true;
+        bool indicatesTouchRelease = textPayload.Contains("false")
+            || textPayload.Contains("ended")
+            || textPayload.Contains("cancel")
+            || textPayload.Contains("up");
+        bool indicatesTouchPress = textPayload.Contains("true")
+            || textPayload.Contains("down")
+            || textPayload.Contains("begin")
+            || textPayload.Contains("start")
+            || textPayload.Contains("tap")
+            || textPayload.Contains("press");
+
+        if (indicatesTouchRelease && !indicatesTouchPress)
+        {
+            hasActiveTouch = false;
+        }
+
+        return TryRequestRecenterFromTouchState(hasActiveTouch);
+    }
+
+    private bool TryRequestRecenterFromTouchState(bool hasActiveTouch)
+    {
         lock (syncRoot)
         {
             if (!hasActiveTouch)
@@ -834,7 +878,7 @@ public class UdpQuaternionReceiver : MonoBehaviour
 
             lastTouchRecenterTime = now;
             LastRecenterTime = DateTime.Now;
-            RecenterRequestCount++;
+            Interlocked.Increment(ref recenterRequestCount);
             return true;
         }
     }
