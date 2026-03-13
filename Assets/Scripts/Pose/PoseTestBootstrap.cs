@@ -61,6 +61,14 @@ public class PoseTestBootstrap : MonoBehaviour
     [SerializeField] private int leftCameraTargetDisplay = 1;
     [SerializeField] private int frontCameraTargetDisplay = 2;
     [SerializeField] private float viewerDistanceFromScreens = DefaultViewerDistanceFromScreens;
+    [Header("Projection Cameras")]
+    [Tooltip("フロント投影カメラ。割り当てた場合はそのカメラを使用し、自動生成しません。")]
+    [SerializeField] private Camera frontProjectionCameraOverride;
+    [Tooltip("レフト投影カメラ。割り当てた場合はそのカメラを使用し、自動生成しません。")]
+    [SerializeField] private Camera leftProjectionCameraOverride;
+    [Tooltip("trueにすると、カメラが見つからない場合に自動生成します。falseなら手動配置のカメラのみ使用します。")]
+    [SerializeField] private bool autoCreateCamerasIfMissing = false;
+
     private bool hasBuilt;
     private bool editorPreviewQueued;
     private Camera frontProjectionCamera;
@@ -296,40 +304,68 @@ public class PoseTestBootstrap : MonoBehaviour
 
     private void SetupCameras(ProjectionSurface frontSurface, ProjectionSurface leftSurface, Transform viewerOrigin)
     {
-        frontProjectionCamera = EnsureCamera("Main Camera", "MainCamera");
-        ConfigureCamera(frontProjectionCamera, Mathf.Clamp(frontCameraTargetDisplay, 0, 7), 40f, frontSurface, viewerOrigin, false, false);
+        frontProjectionCamera = ResolveCamera(frontProjectionCameraOverride, "Main Camera", "MainCamera", autoCreateCamerasIfMissing);
+        if (frontProjectionCamera != null)
+        {
+            ConfigureCamera(frontProjectionCamera, Mathf.Clamp(frontCameraTargetDisplay, 0, 7), 40f, frontSurface, viewerOrigin, false, false);
+        }
 
-        leftProjectionCamera = EnsureCamera("Left Projection Camera", null);
-        ConfigureCamera(leftProjectionCamera, Mathf.Clamp(leftCameraTargetDisplay, 0, 7), 40f, leftSurface, viewerOrigin, false, false);
+        leftProjectionCamera = ResolveCamera(leftProjectionCameraOverride, "Left Projection Camera", null, autoCreateCamerasIfMissing);
+        if (leftProjectionCamera != null)
+        {
+            ConfigureCamera(leftProjectionCamera, Mathf.Clamp(leftCameraTargetDisplay, 0, 7), 40f, leftSurface, viewerOrigin, false, false);
+        }
 
+        // Disable legacy Right Projection Camera if it exists and is not the left camera.
         GameObject rightCameraObject = GameObject.Find("Right Projection Camera");
         if (rightCameraObject != null)
         {
             Camera rightCamera = rightCameraObject.GetComponent<Camera>();
-            if (rightCamera != null)
+            if (rightCamera != null && rightCamera != leftProjectionCamera)
             {
                 rightCamera.enabled = false;
             }
         }
     }
 
-    private static Camera EnsureCamera(string cameraName, string tagName)
+    /// <summary>
+    /// インスペクタ参照 → 名前検索 → 任意で新規生成の優先順でカメラを解決します。
+    /// </summary>
+    private static Camera ResolveCamera(Camera overrideCamera, string searchName, string tagName, bool createIfMissing)
     {
-        GameObject cameraObject = GameObject.Find(cameraName);
-        Camera sceneCamera = cameraObject != null ? cameraObject.GetComponent<Camera>() : null;
-
-        if (sceneCamera == null)
+        if (overrideCamera != null)
         {
-            cameraObject = new GameObject(cameraName);
-            sceneCamera = cameraObject.AddComponent<Camera>();
+            return overrideCamera;
         }
 
+        GameObject found = GameObject.Find(searchName);
+        Camera sceneCamera = found != null ? found.GetComponent<Camera>() : null;
+        if (sceneCamera != null)
+        {
+            return sceneCamera;
+        }
+
+        if (!createIfMissing)
+        {
+            return null;
+        }
+
+        GameObject newObject = new GameObject(searchName);
+        Camera newCamera = newObject.AddComponent<Camera>();
         if (!string.IsNullOrEmpty(tagName))
         {
-            cameraObject.tag = tagName;
+            newObject.tag = tagName;
         }
 
-        return sceneCamera;
+        return newCamera;
+    }
+
+    /// <summary>
+    /// 外部（Cinemachine 連携スクリプト等）からカメラを Off-Axis 投影に設定するためのパブリックユーティリティです。
+    /// </summary>
+    public static void ConfigureOffAxisCamera(Camera cam, int targetDisplay, ProjectionSurface surface, Transform eyePoint, bool flipH = false, bool flipV = false)
+    {
+        ConfigureCamera(cam, targetDisplay, 40f, surface, eyePoint, flipH, flipV);
     }
 
     private static void ConfigureCamera(Camera sceneCamera, int targetDisplay, float fieldOfView, ProjectionSurface surface, Transform eyePoint, bool flipHorizontally, bool flipVertically)

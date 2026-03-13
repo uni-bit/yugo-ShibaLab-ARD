@@ -1,5 +1,8 @@
 using UnityEngine;
 
+// Execute well after CinemachineBrain (typically order ~100) so that
+// off-axis projection matrix overrides are applied last every LateUpdate.
+[DefaultExecutionOrder(1000)]
 [ExecuteAlways]
 [RequireComponent(typeof(Camera))]
 [AddComponentMenu("Projection/Off Axis Projection Camera")]
