@@ -39,15 +39,8 @@ public class PoseCalibrationCoordinator : MonoBehaviour
         {
             lastHandledRecenterRequestCount = receiver.RecenterRequestCount;
 
-            Vector2 touchPos;
-            if (receiver.ConsumePendingTouchPosition(out touchPos))
-            {
-                ResetAllCalibrationWithTouchPoint(touchPos);
-            }
-            else
-            {
-                ResetAllCalibration();
-            }
+            // Touch recenter should behave exactly like keyboard recenter.
+            ResetAllCalibration();
             return;
         }
 

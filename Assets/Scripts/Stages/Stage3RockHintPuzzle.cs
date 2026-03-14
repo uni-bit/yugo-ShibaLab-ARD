@@ -18,6 +18,7 @@ using UnityEngine;
 public class Stage3RockHintPuzzle : MonoBehaviour
 {
     private const string EmissiveShellName = "Stage3 Emissive Shell";
+    private const string DefaultBurstShaderName = "Sprites/Default";
 
 
 
@@ -84,6 +85,7 @@ public class Stage3RockHintPuzzle : MonoBehaviour
     [SerializeField] private float obstacleRockRiseSpeed = 0.4f;
     [SerializeField] private float obstacleGlowIntensity = 0.8f;
     [SerializeField] private Color obstacleGlowColor = new Color(0.85f, 0.55f, 0.2f, 1f);
+    [SerializeField] private LayerMask obstacleOcclusionMask = ~0;
     [Header("Rise Randomization")]
     [SerializeField] private float speedRandomRange = 0.3f;
     [SerializeField] private float swayAmplitude = 0.08f;
@@ -141,6 +143,10 @@ public class Stage3RockHintPuzzle : MonoBehaviour
     private readonly System.Collections.Generic.List<RendererState> rendererStates = new System.Collections.Generic.List<RendererState>();
     private readonly System.Collections.Generic.Dictionary<Transform, RockVisualCache> rockVisualCaches = new System.Collections.Generic.Dictionary<Transform, RockVisualCache>();
 
+    public bool IsComplete => finalePhase == FinalePhase.Complete;
+    public bool GreenActivated => greenActivated;
+    public bool BlueActivated => blueActivated;
+
     private void Awake()
     {
         ResolveSensors();
@@ -157,6 +163,7 @@ public class Stage3RockHintPuzzle : MonoBehaviour
         CacheLightState();
         RefreshVisuals();
         InitRiseRandomization();
+        EnsureObstacleSensors();
         EnsureObstacleColliders();
     }
 
@@ -256,6 +263,23 @@ public class Stage3RockHintPuzzle : MonoBehaviour
     public void ConfigureBrightTransition(bool useBright)
     {
         useBrightTransitionToNextStage = useBright;
+    }
+
+    public void ConfigureDynamicStageObjects(Transform[] liftTargets, Transform[] obstacleTargets)
+    {
+        if (liftTargets != null)
+        {
+            loopingLiftTargets = liftTargets;
+        }
+
+        if (obstacleTargets != null)
+        {
+            obstacleRocks = obstacleTargets;
+        }
+
+        InitRiseRandomization();
+        EnsureObstacleSensors();
+        EnsureObstacleColliders();
     }
 
     public void RefreshVisuals()
@@ -542,10 +566,54 @@ public class Stage3RockHintPuzzle : MonoBehaviour
 
         direction /= maxDistance;
 
-        if (Physics.Raycast(new Ray(lightPosition, direction), out RaycastHit hit, maxDistance, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+        RaycastHit[] hits = Physics.RaycastAll(new Ray(lightPosition, direction), maxDistance, obstacleOcclusionMask, QueryTriggerInteraction.Ignore);
+        if (hits == null || hits.Length == 0)
         {
-            bool hitSensor = hit.transform == sensor.transform || hit.transform.IsChildOf(sensor.transform);
-            return !hitSensor;
+            return false;
+        }
+
+        System.Array.Sort(hits, (left, right) => left.distance.CompareTo(right.distance));
+        for (int index = 0; index < hits.Length; index++)
+        {
+            Transform hitTransform = hits[index].transform;
+            if (hitTransform == null)
+            {
+                continue;
+            }
+
+            if (hitTransform == sensor.transform || hitTransform.IsChildOf(sensor.transform))
+            {
+                return false;
+            }
+
+            if (IsObstacleTransform(hitTransform))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool IsObstacleTransform(Transform target)
+    {
+        if (target == null || obstacleRocks == null)
+        {
+            return false;
+        }
+
+        for (int index = 0; index < obstacleRocks.Length; index++)
+        {
+            Transform obstacle = obstacleRocks[index];
+            if (obstacle == null)
+            {
+                continue;
+            }
+
+            if (target == obstacle || target.IsChildOf(obstacle))
+            {
+                return true;
+            }
         }
 
         return false;
@@ -623,6 +691,34 @@ public class Stage3RockHintPuzzle : MonoBehaviour
                 BoxCollider added = rock.gameObject.AddComponent<BoxCollider>();
                 added.isTrigger = false;
             }
+        }
+    }
+
+    private void EnsureObstacleSensors()
+    {
+        if (obstacleRocks == null)
+        {
+            return;
+        }
+
+        for (int index = 0; index < obstacleRocks.Length; index++)
+        {
+            Transform obstacle = obstacleRocks[index];
+            if (obstacle == null)
+            {
+                continue;
+            }
+
+            SpotlightSensor sensor = obstacle.GetComponent<SpotlightSensor>();
+            if (sensor == null)
+            {
+                sensor = obstacle.gameObject.AddComponent<SpotlightSensor>();
+            }
+
+            Renderer sampleRenderer = obstacle.GetComponentInChildren<Renderer>(true);
+            Collider sampleCollider = obstacle.GetComponentInChildren<Collider>(true);
+            sensor.Configure(null, null, obstacle, sampleRenderer, sampleCollider);
+            sensor.SetLineOfSight(false);
         }
     }
 
@@ -1382,13 +1478,22 @@ public class Stage3RockHintPuzzle : MonoBehaviour
 
         var renderer = particleSystem.GetComponent<ParticleSystemRenderer>();
         renderer.renderMode = ParticleSystemRenderMode.Billboard;
-        Shader particleShader = Shader.Find("Universal Render Pipeline/Particles/Unlit")
+        Shader particleShader = Shader.Find(DefaultBurstShaderName)
+            ?? Shader.Find("Universal Render Pipeline/Particles/Unlit")
             ?? Shader.Find("Particles/Standard Unlit")
             ?? Shader.Find("Legacy Shaders/Particles/Additive");
         if (particleShader != null)
         {
             Material particleMaterial = new Material(particleShader);
             particleMaterial.color = Color.white;
+            if (particleMaterial.HasProperty("_BaseColor"))
+            {
+                particleMaterial.SetColor("_BaseColor", Color.white);
+            }
+            if (particleMaterial.HasProperty("_Color"))
+            {
+                particleMaterial.SetColor("_Color", Color.white);
+            }
             renderer.material = particleMaterial;
         }
         renderer.alignment = ParticleSystemRenderSpace.View;

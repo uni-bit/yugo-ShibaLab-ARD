@@ -22,8 +22,14 @@ public class StageLightCodeDialColumn : MonoBehaviour
     private float decrementTimer;
     private bool inputLocked;
 
+    private void Reset()
+    {
+        ResolveDigitAnimator();
+    }
+
     private void Awake()
     {
+        ResolveDigitAnimator();
         SetDigit(startingDigit);
         ApplyIndicatorState(false, false);
     }
@@ -45,7 +51,7 @@ public class StageLightCodeDialColumn : MonoBehaviour
         int initialDigit)
     {
         digitText = digitTextReference;
-        digitAnimator = digitText != null ? digitText.GetComponent<StageLightCodeDigitAnimator>() : null;
+        ResolveDigitAnimator();
         incrementSensor = incrementSensorReference;
         decrementSensor = decrementSensorReference;
         incrementIndicator = incrementIndicatorReference;
@@ -176,6 +182,7 @@ public class StageLightCodeDialColumn : MonoBehaviour
 
     private void SetDigit(int nextDigit, int direction = 0)
     {
+        ResolveDigitAnimator();
         CurrentDigit = ((nextDigit % 10) + 10) % 10;
         bool hasAnimator = digitAnimator != null;
         if (hasAnimator)
@@ -193,6 +200,21 @@ public class StageLightCodeDialColumn : MonoBehaviour
         if (digitText != null && (!hasAnimator || direction == 0))
         {
             digitText.text = CurrentDigit.ToString();
+        }
+    }
+
+    private void ResolveDigitAnimator()
+    {
+        if (digitText == null)
+        {
+            digitAnimator = null;
+            return;
+        }
+
+        digitAnimator = digitText.GetComponent<StageLightCodeDigitAnimator>();
+        if (digitAnimator == null)
+        {
+            digitAnimator = digitText.gameObject.AddComponent<StageLightCodeDigitAnimator>();
         }
     }
 }

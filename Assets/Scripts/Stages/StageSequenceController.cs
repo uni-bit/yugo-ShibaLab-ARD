@@ -52,6 +52,7 @@ public class StageSequenceController : MonoBehaviour
 
     private void Reset()
     {
+        EnsureAudioController();
         MigrateStartingStageDefault();
         DiscoverExistingStageRoots();
         SyncStageSetupIfEnabled();
@@ -60,6 +61,7 @@ public class StageSequenceController : MonoBehaviour
 
     private void Awake()
     {
+        EnsureAudioController();
         MigrateStartingStageDefault();
         DiscoverExistingStageRoots();
         ResolveRuntimeReferences();
@@ -70,6 +72,7 @@ public class StageSequenceController : MonoBehaviour
 
     private void OnValidate()
     {
+        EnsureAudioController();
         MigrateStartingStageDefault();
         DiscoverExistingStageRoots();
 
@@ -317,6 +320,14 @@ public class StageSequenceController : MonoBehaviour
         }
 
         return Mathf.Clamp(startingStageIndex, 0, Mathf.Max(0, stageRoots.Length - 1));
+    }
+
+    private void EnsureAudioController()
+    {
+        if (GetComponent<StageAudioController>() == null)
+        {
+            gameObject.AddComponent<StageAudioController>();
+        }
     }
 
     private int GetCurrentlyActiveStageIndex()

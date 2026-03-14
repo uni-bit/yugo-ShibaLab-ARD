@@ -40,6 +40,7 @@ public class UdpQuaternionReceiver : MonoBehaviour
 
     [Header("Touch Input")]
     [SerializeField] private float touchRecenterCooldownSeconds = 0.8f;
+    [SerializeField] private bool receiveWhenAppIsNotFocused = true;
 
     private readonly object syncRoot = new object();
     private static readonly Regex FloatRegex = new Regex(@"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?", RegexOptions.Compiled);
@@ -68,6 +69,7 @@ public class UdpQuaternionReceiver : MonoBehaviour
     private float latestTouchX;
     private float latestTouchY;
     private bool hasPendingTouchPosition;
+    private bool lastExplicitTouchActive;
 
     public Quaternion LatestRawRotation { get; private set; } = Quaternion.identity;
     public Quaternion LatestStabilizedRawRotation { get; private set; } = Quaternion.identity;
@@ -103,6 +105,11 @@ public class UdpQuaternionReceiver : MonoBehaviour
 
     private void OnEnable()
     {
+        if (Application.isPlaying && receiveWhenAppIsNotFocused)
+        {
+            Application.runInBackground = true;
+        }
+
         StartReceiver();
         nextConsoleLogTime = 0f;
     }
@@ -911,64 +918,197 @@ public class UdpQuaternionReceiver : MonoBehaviour
         }
 
         bool hasActiveTouch = false;
+        bool hasExplicitTouchState = false;
+        int explicitTouchCount = 0;
+        float? touchX = null;
+        float? touchY = null;
+
         for (int index = 0; index < messages.Count; index++)
         {
-            if (!hasActiveTouch && IsActiveTouchMessage(messages[index]))
+            OscMessage message = messages[index];
+
+            if (TryExtractZigSimTouchCount(message, out int touchCount))
+            {
+                hasExplicitTouchState = true;
+                explicitTouchCount = touchCount;
+            }
+
+            ExtractZigSimTouchPosition(message, ref touchX, ref touchY);
+
+            if (!hasActiveTouch && IsActiveTouchMessage(message))
             {
                 hasActiveTouch = true;
             }
+        }
 
-            ExtractZigSimTouchPosition(messages[index]);
+        if (touchX.HasValue && touchY.HasValue)
+        {
+            lock (syncRoot)
+            {
+                latestTouchX = touchX.Value;
+                latestTouchY = touchY.Value;
+                LatestTouchPosition = new Vector2(latestTouchX, latestTouchY);
+                hasPendingTouchPosition = true;
+            }
+        }
+
+        if (hasExplicitTouchState)
+        {
+            hasActiveTouch = explicitTouchCount > 0;
+            lock (syncRoot)
+            {
+                LastTouchStatus = hasActiveTouch
+                    ? string.Format(CultureInfo.InvariantCulture, "Touchcount active: {0}", explicitTouchCount)
+                    : "Touchcount reports no active touch";
+            }
+
+            return TryRequestRecenterFromExplicitTouchState(hasActiveTouch);
         }
 
         return TryRequestRecenterFromTouchState(hasActiveTouch);
     }
 
-    private void ExtractZigSimTouchPosition(OscMessage message)
+    private bool TryRequestRecenterFromExplicitTouchState(bool hasActiveTouch)
+    {
+        lock (syncRoot)
+        {
+            bool isNewTouch = hasActiveTouch && !lastExplicitTouchActive;
+            lastExplicitTouchActive = hasActiveTouch;
+
+            if (!hasActiveTouch)
+            {
+                return false;
+            }
+
+            Interlocked.Increment(ref touchPacketCount);
+
+            if (!isNewTouch)
+            {
+                LastTouchStatus = "Touchcount active (holding)";
+                return false;
+            }
+
+            DateTime now = DateTime.UtcNow;
+            double secondsSinceLastTrigger = lastTouchRecenterTime == DateTime.MinValue
+                ? double.MaxValue
+                : (now - lastTouchRecenterTime).TotalSeconds;
+
+            if (secondsSinceLastTrigger < touchRecenterCooldownSeconds)
+            {
+                LastTouchStatus = string.Format(
+                    CultureInfo.InvariantCulture,
+                    "Touch detected (cooldown {0:F2}s / {1:F2}s)",
+                    secondsSinceLastTrigger,
+                    touchRecenterCooldownSeconds);
+                return false;
+            }
+
+            lastTouchRecenterTime = now;
+            LastRecenterTime = DateTime.Now;
+            LastTouchStatus = "Recenter triggered by touchcount edge!";
+            Interlocked.Increment(ref recenterRequestCount);
+            Interlocked.Increment(ref pendingRecenterRequests);
+            return true;
+        }
+    }
+
+    private static bool TryExtractZigSimTouchCount(OscMessage message, out int touchCount)
+    {
+        touchCount = 0;
+
+        if (message.DebugArguments == null || message.DebugArguments.Count == 0)
+        {
+            return false;
+        }
+
+        string normalizedAddress = NormalizeOscAddress(message.Address);
+        if (string.IsNullOrEmpty(normalizedAddress) || !normalizedAddress.Contains("touchcount"))
+        {
+            return false;
+        }
+
+        return int.TryParse(message.DebugArguments[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out touchCount);
+    }
+
+    private void ExtractZigSimTouchPosition(OscMessage message, ref float? touchX, ref float? touchY)
+    {
+        string normalized = NormalizeOscAddress(message.Address);
+        if (string.IsNullOrEmpty(normalized))
+        {
+            return;
+        }
+
+        int lastSlash = normalized.LastIndexOf('/');
+        string lastSegment = lastSlash >= 0 ? normalized.Substring(lastSlash + 1) : normalized;
+
+        if (TryExtractTouchPairPosition(lastSegment, message, ref touchX, ref touchY))
+        {
+            return;
+        }
+
+        TryExtractSplitAxisTouchPosition(lastSegment, message, ref touchX, ref touchY);
+    }
+
+    private static bool TryExtractTouchPairPosition(string lastSegment, OscMessage message, ref float? touchX, ref float? touchY)
     {
         if (message.FloatArguments == null || message.FloatArguments.Count < 2)
         {
-            return;
+            return false;
         }
-
-        string address = message.Address;
-        if (string.IsNullOrEmpty(address))
-        {
-            return;
-        }
-
-        string normalized = address.Trim().ToLowerInvariant().Replace("\\", "/");
-        int lastSlash = normalized.LastIndexOf('/');
-        string lastSegment = lastSlash >= 0 ? normalized.Substring(lastSlash + 1) : normalized;
 
         // Match /touch0 format (touch followed by digit only, not touchcount/touchradius/touchforce)
         if (!lastSegment.StartsWith("touch", StringComparison.Ordinal))
         {
-            return;
+            return false;
         }
 
         string suffix = lastSegment.Substring(5);
         if (suffix.Length == 0 || !char.IsDigit(suffix[0]))
         {
-            return;
+            return false;
         }
 
-        // Check that it's purely a touch ID (no alphabetical suffix like "radius" or "force")
         for (int i = 0; i < suffix.Length; i++)
         {
             if (!char.IsDigit(suffix[i]))
             {
-                return;
+                return false;
             }
         }
 
-        lock (syncRoot)
+        touchX = message.FloatArguments[0];
+        touchY = message.FloatArguments[1];
+        return true;
+    }
+
+    private static void TryExtractSplitAxisTouchPosition(string lastSegment, OscMessage message, ref float? touchX, ref float? touchY)
+    {
+        if (message.FloatArguments == null || message.FloatArguments.Count == 0)
         {
-            latestTouchX = message.FloatArguments[0];
-            latestTouchY = message.FloatArguments[1];
-            LatestTouchPosition = new Vector2(latestTouchX, latestTouchY);
-            hasPendingTouchPosition = true;
+            return;
         }
+
+        if (!lastSegment.StartsWith("touch(", StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        char axis = lastSegment[lastSegment.Length - 1];
+        if (axis == '1')
+        {
+            touchX = message.FloatArguments[0];
+        }
+        else if (axis == '2')
+        {
+            touchY = message.FloatArguments[0];
+        }
+    }
+
+    private static string NormalizeOscAddress(string address)
+    {
+        return string.IsNullOrEmpty(address)
+            ? string.Empty
+            : address.Trim().ToLowerInvariant().Replace("\\", "/").Replace(":", "/");
     }
 
     private bool TryRequestRecenterFromRawPayload(byte[] payload)
@@ -1062,9 +1202,7 @@ public class UdpQuaternionReceiver : MonoBehaviour
             return false;
         }
 
-        string normalizedAddress = string.IsNullOrEmpty(message.Address)
-            ? string.Empty
-            : message.Address.Trim().ToLowerInvariant().Replace("\\", "/").Replace(":", "/");
+        string normalizedAddress = NormalizeOscAddress(message.Address);
 
         // ZIG SIM touch format:
         //   /(uuid)/touchcount ,i -> N          (N=0 means no touch)

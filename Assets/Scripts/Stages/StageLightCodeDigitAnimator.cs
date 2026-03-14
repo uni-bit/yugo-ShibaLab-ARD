@@ -4,24 +4,29 @@ using UnityEngine;
 [AddComponentMenu("Stages/Stage Code Digit Animator")]
 public class StageLightCodeDigitAnimator : MonoBehaviour
 {
-    private const float IncomingExtraOffset = 0.5f;
-
     [SerializeField] private TextMesh primaryText;
+    [Header("Timing")]
     [SerializeField] private float animationDuration = 0.34f;
-    [SerializeField] private float exitDistance = 0.5f;
-    [SerializeField] private float entryDistance = 1.6f;
-    [SerializeField] private float adjacentDigitOpacity = 0.36f;
+    [SerializeField] private AnimationCurve travelCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
+
+    [Header("Layout")]
+    [SerializeField] private float digitSpacing = 0.52f;
+
+    [Header("Opacity")]
+    [SerializeField, Range(0f, 1f)] private float previousDigitStartOpacity = 1f;
+    [SerializeField, Range(0f, 1f)] private float previousDigitEndOpacity = 0f;
+    [SerializeField, Range(0f, 1f)] private float currentDigitStartOpacity = 0f;
+    [SerializeField, Range(0f, 1f)] private float currentDigitEndOpacity = 1f;
 
     private const string SecondaryName = "Next Digit";
-    private const string AdjacentName = "Adjacent Digit";
 
     private TextMesh secondaryText;
-    private TextMesh adjacentText;
     private int displayedDigit;
     private int targetDigit;
     private int animationDirection;
     private float animationTime;
     private bool isAnimating;
+    private Color baseTextColor = Color.white;
 
     private void Reset()
     {
@@ -44,7 +49,15 @@ public class StageLightCodeDigitAnimator : MonoBehaviour
     private void OnValidate()
     {
         EnsureTexts();
-        ApplyAnimationFrame(1f);
+
+        if (isAnimating)
+        {
+            float normalized = animationDuration <= 0.0001f ? 1f : Mathf.Clamp01(animationTime / animationDuration);
+            ApplyAnimationFrame(normalized);
+            return;
+        }
+
+        SetDigitImmediate(displayedDigit);
     }
 
     private void Update()
@@ -73,26 +86,23 @@ public class StageLightCodeDigitAnimator : MonoBehaviour
         displayedDigit = ((digit % 10) + 10) % 10;
         targetDigit = displayedDigit;
         isAnimating = false;
+        animationTime = 0f;
         EnsureTexts();
+        CacheBaseColor();
 
         if (primaryText != null)
         {
             primaryText.text = displayedDigit.ToString();
             primaryText.transform.localPosition = Vector3.zero;
+            primaryText.color = baseTextColor;
         }
 
         if (secondaryText != null)
         {
             secondaryText.text = displayedDigit.ToString();
-            secondaryText.transform.localPosition = new Vector3(0f, -(exitDistance + IncomingExtraOffset), 0f);
+            secondaryText.transform.localPosition = new Vector3(0f, -GetDigitSpacing(), 0f);
+            secondaryText.color = new Color(baseTextColor.r, baseTextColor.g, baseTextColor.b, 0f);
             secondaryText.gameObject.SetActive(false);
-        }
-
-        if (adjacentText != null)
-        {
-            adjacentText.text = displayedDigit.ToString();
-            adjacentText.transform.localPosition = new Vector3(0f, -exitDistance, 0f);
-            adjacentText.gameObject.SetActive(false);
         }
     }
 
@@ -106,6 +116,7 @@ public class StageLightCodeDigitAnimator : MonoBehaviour
         }
 
         EnsureTexts();
+        CacheBaseColor();
         targetDigit = normalizedDigit;
         animationDirection = direction >= 0 ? 1 : -1;
         animationTime = 0f;
@@ -120,11 +131,6 @@ public class StageLightCodeDigitAnimator : MonoBehaviour
         {
             secondaryText.text = targetDigit.ToString();
             secondaryText.gameObject.SetActive(true);
-        }
-
-        if (adjacentText != null)
-        {
-            adjacentText.gameObject.SetActive(false);
         }
 
         ApplyAnimationFrame(0f);
@@ -156,25 +162,12 @@ public class StageLightCodeDigitAnimator : MonoBehaviour
             secondaryText = secondaryTransform.gameObject.AddComponent<TextMesh>();
         }
 
-        Transform adjacentTransform = transform.Find(AdjacentName);
-        if (adjacentTransform == null)
-        {
-            adjacentTransform = new GameObject(AdjacentName).transform;
-            adjacentTransform.SetParent(transform, false);
-        }
-
-        adjacentText = adjacentTransform.GetComponent<TextMesh>();
-        if (adjacentText == null)
-        {
-            adjacentText = adjacentTransform.gameObject.AddComponent<TextMesh>();
-        }
-
         CopyPrimaryStyle();
     }
 
     private void CopyPrimaryStyle()
     {
-        if (primaryText == null || secondaryText == null || adjacentText == null)
+        if (primaryText == null || secondaryText == null)
         {
             return;
         }
@@ -186,16 +179,8 @@ public class StageLightCodeDigitAnimator : MonoBehaviour
         secondaryText.alignment = primaryText.alignment;
         secondaryText.richText = primaryText.richText;
         secondaryText.color = primaryText.color;
-        adjacentText.font = primaryText.font;
-        adjacentText.fontSize = primaryText.fontSize;
-        adjacentText.characterSize = primaryText.characterSize;
-        adjacentText.anchor = primaryText.anchor;
-        adjacentText.alignment = primaryText.alignment;
-        adjacentText.richText = primaryText.richText;
-        adjacentText.color = primaryText.color;
 
         MeshRenderer secondaryRenderer = secondaryText.GetComponent<MeshRenderer>();
-        MeshRenderer adjacentRenderer = adjacentText.GetComponent<MeshRenderer>();
         MeshRenderer primaryRenderer = primaryText.GetComponent<MeshRenderer>();
         if (secondaryRenderer != null)
         {
@@ -207,15 +192,7 @@ public class StageLightCodeDigitAnimator : MonoBehaviour
             }
         }
 
-        if (adjacentRenderer != null)
-        {
-            adjacentRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            adjacentRenderer.receiveShadows = false;
-            if (primaryRenderer != null && primaryRenderer.sharedMaterial != null)
-            {
-                adjacentRenderer.sharedMaterial = primaryRenderer.sharedMaterial;
-            }
-        }
+        CacheBaseColor();
     }
 
     private void ApplyAnimationFrame(float normalized)
@@ -226,30 +203,52 @@ public class StageLightCodeDigitAnimator : MonoBehaviour
             return;
         }
 
-        float eased = Mathf.SmoothStep(0f, 1f, normalized);
-        float travelDistance = Mathf.Max(0.0001f, exitDistance);
-        float incomingStartDistance = travelDistance + IncomingExtraOffset;
-        float outgoingY = travelDistance * eased * animationDirection;
-        float incomingStartY = -incomingStartDistance * animationDirection;
-        float incomingY = Mathf.Lerp(incomingStartY, 0f, eased);
+        float eased = EvaluateTravel(normalized);
+        float spacing = GetDigitSpacing();
+        float outgoingY = spacing * eased * animationDirection;
+        float incomingY = outgoingY - (spacing * animationDirection);
 
         primaryText.transform.localPosition = new Vector3(0f, outgoingY, 0f);
         secondaryText.transform.localPosition = new Vector3(0f, incomingY, 0f);
-        adjacentText.transform.localPosition = new Vector3(0f, incomingY, 0f);
 
-        Color baseColor = primaryText.color;
-        Color outgoingColor = baseColor;
-        outgoingColor.a = Mathf.Lerp(1f, 0f, eased);
-        Color incomingColor = baseColor;
-        incomingColor.a = Mathf.Lerp(0f, 1f, eased);
+        Color outgoingColor = baseTextColor;
+        outgoingColor.a = baseTextColor.a * Mathf.Lerp(previousDigitStartOpacity, previousDigitEndOpacity, eased);
+        Color incomingColor = baseTextColor;
+        incomingColor.a = baseTextColor.a * Mathf.Lerp(currentDigitStartOpacity, currentDigitEndOpacity, eased);
         primaryText.color = outgoingColor;
         secondaryText.color = incomingColor;
-        adjacentText.color = new Color(baseColor.r, baseColor.g, baseColor.b, 0f);
 
         if (normalized >= 1f)
         {
             secondaryText.gameObject.SetActive(false);
-            adjacentText.gameObject.SetActive(false);
         }
+    }
+
+    private void CacheBaseColor()
+    {
+        if (primaryText != null)
+        {
+            Color candidate = primaryText.color;
+            if (candidate.a > 0.0001f || baseTextColor.a <= 0.0001f)
+            {
+                baseTextColor = candidate;
+            }
+        }
+    }
+
+    private float EvaluateTravel(float normalized)
+    {
+        float clamped = Mathf.Clamp01(normalized);
+        if (travelCurve == null || travelCurve.length == 0)
+        {
+            return Mathf.SmoothStep(0f, 1f, clamped);
+        }
+
+        return Mathf.Clamp01(travelCurve.Evaluate(clamped));
+    }
+
+    private float GetDigitSpacing()
+    {
+        return Mathf.Max(0.0001f, digitSpacing);
     }
 }

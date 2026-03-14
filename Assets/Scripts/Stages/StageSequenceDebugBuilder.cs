@@ -256,26 +256,69 @@ public static class StageSequenceDebugBuilder
 
     private static void EnsureStage4(Transform root)
     {
-        EnsureRockHintStage(
-            root,
-            4,
-            "Follow the same light logic deeper inside",
-            new Vector3(16f, 0.2f, 20f),
-            new Color(0.09f, 0.07f, 0.08f, 1f),
-            new Vector3(0f, 3f, 5.6f),
-            new Vector3(0f, 0f, 9.4f),
-            new Vector3(4.6f, 0.78f, 7.3f),
-            new Vector3(-4.2f, 0f, 14.2f),
-            new Vector3(0f, 0.72f, 0.95f),
-            true,
-            false,
-            3,
-            false);
+        EnsureStageSpotlightSettings(root, false, 20f, 68f, 18f, Color.white);
+        RemoveGeneratedStage4Content(root);
+        EnsureGround(root, "Stage4 Ground", new Vector3(0f, -0.55f, 10.5f), new Vector3(16f, 0.2f, 20f), new Color(0.09f, 0.07f, 0.08f, 1f));
+
+        Transform labelRoot = FindOrCreateChildIfMissing(root, "Stage4 Label", new Vector3(0f, 3f, 5.6f));
+        labelRoot.localPosition = new Vector3(0f, 3f, 5.6f);
+        TextMesh labelText = labelRoot.GetComponent<TextMesh>();
+        if (labelText == null)
+        {
+            labelText = labelRoot.gameObject.AddComponent<TextMesh>();
+        }
+
+        labelText.text = "Stage 4";
+        labelText.characterSize = 0.18f;
+        labelText.fontSize = 96;
+        labelText.alignment = TextAlignment.Center;
+        labelText.anchor = TextAnchor.MiddleCenter;
+        labelText.color = new Color(0.86f, 0.9f, 0.94f, 1f);
+        ApplyBuiltInFont(labelText);
 
         Stage4SequenceController stage4Seq = root.GetComponent<Stage4SequenceController>();
         if (stage4Seq == null)
         {
             root.gameObject.AddComponent<Stage4SequenceController>();
+        }
+
+        Stage3RockHintPuzzle puzzle = root.GetComponent<Stage3RockHintPuzzle>();
+        if (puzzle != null)
+        {
+            if (Application.isPlaying)
+            {
+                Object.Destroy(puzzle);
+            }
+            else
+            {
+                Object.DestroyImmediate(puzzle);
+            }
+        }
+    }
+
+    private static void RemoveGeneratedStage4Content(Transform root)
+    {
+        string[] generatedChildNames =
+        {
+            "Stage4 Puzzle Root"
+        };
+
+        for (int index = 0; index < generatedChildNames.Length; index++)
+        {
+            Transform child = root.Find(generatedChildNames[index]);
+            if (child == null)
+            {
+                continue;
+            }
+
+            if (Application.isPlaying)
+            {
+                Object.Destroy(child.gameObject);
+            }
+            else
+            {
+                Object.DestroyImmediate(child.gameObject);
+            }
         }
     }
 
@@ -337,6 +380,7 @@ public static class StageSequenceDebugBuilder
         Transform greenHintRock = EnsureStage3HiddenRock(hiddenHintArea, "Green Hint Rock", greenHintPosition, new Vector3(0.9f, 0.9f, 0.9f), new Color(0.2f, 0.9f, 0.35f, 1f));
         EnsureStage3Cave(caveRoot);
         Transform blueHintRock = EnsureStage3HiddenRock(caveRoot, "Blue Hint Rock", blueHintLocalPosition, new Vector3(0.82f, 0.82f, 0.82f), new Color(0.24f, 0.58f, 0.98f, 1f));
+        Transform[] obstacleRocks = EnsureStageObstacleRocks(hiddenHintArea, caveRoot, stageNumber);
 
         Stage3RockHintPuzzle puzzle = root.GetComponent<Stage3RockHintPuzzle>();
         if (puzzle == null)
@@ -345,6 +389,7 @@ public static class StageSequenceDebugBuilder
         }
 
         puzzle.ConfigureDefaults(redPedestalRock, greenPedestalRock, bluePedestalRock, greenHintRock, blueHintRock);
+        puzzle.ConfigureDynamicStageObjects(null, obstacleRocks);
         puzzle.ConfigureTransition(advanceToNextStage, nextStageIndex);
         puzzle.ConfigureBrightTransition(brightTransitionToNext);
     }
@@ -465,6 +510,48 @@ public static class StageSequenceDebugBuilder
         SetRendererColor(rightWall, caveColor);
         SetRendererColor(roof, caveColor * 1.08f);
         SetRendererColor(backWall, caveColor * 0.92f);
+    }
+
+    private static Transform[] EnsureStageObstacleRocks(Transform hiddenHintArea, Transform caveRoot, int stageNumber)
+    {
+        Transform obstacleRoot = FindOrCreateChildIfMissing(hiddenHintArea, "Dynamic Obstacles", Vector3.zero);
+        obstacleRoot.localPosition = Vector3.zero;
+
+        Vector3[] localPositions = stageNumber == 3
+            ? new[]
+            {
+                new Vector3(-2.6f, 0.35f, 7.8f),
+                new Vector3(1.1f, 0.7f, 10.1f),
+                caveRoot.localPosition + new Vector3(-0.4f, 0.5f, -1.4f)
+            }
+            : new[]
+            {
+                new Vector3(2.8f, 0.35f, 8.4f),
+                new Vector3(-1.2f, 0.72f, 10.9f),
+                caveRoot.localPosition + new Vector3(0.5f, 0.55f, -1.6f)
+            };
+
+        Vector3[] scales =
+        {
+            new Vector3(1.15f, 1.0f, 1.1f),
+            new Vector3(0.95f, 1.22f, 0.95f),
+            new Vector3(1.3f, 0.86f, 1.15f)
+        };
+
+        Transform[] obstacles = new Transform[localPositions.Length];
+        for (int index = 0; index < localPositions.Length; index++)
+        {
+            Transform obstacle = EnsureStage3Rock(
+                obstacleRoot,
+                "Obstacle Rock " + (index + 1),
+                localPositions[index],
+                scales[index % scales.Length],
+                new Color(0.32f, 0.28f, 0.22f, 1f));
+            obstacle.localRotation = Quaternion.Euler(10f + (index * 7f), 18f + (index * 27f), -12f + (index * 5f));
+            obstacles[index] = obstacle;
+        }
+
+        return obstacles;
     }
 
     private static void RemoveGeneratedStage2CompleteMarker(Transform root)
@@ -1432,8 +1519,9 @@ public static class StageSequenceDebugBuilder
         if (settings == null)
         {
             settings = root.gameObject.AddComponent<StageSpotlightSettings>();
-            settings.Configure(enabled, angle, lightRange, intensity, color);
         }
+
+        settings.Configure(enabled, angle, lightRange, intensity, color);
     }
 
 }

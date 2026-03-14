@@ -19,6 +19,7 @@ public class StageLightCreatureTarget : MonoBehaviour
 
     public bool IsLit => spotlightSensor != null && spotlightSensor.IsLit;
     public bool IsSolved { get; private set; }
+    public ReactionMode CurrentReactionMode => reactionMode;
 
     private Vector3 initialLocalPosition;
     private Quaternion initialLocalRotation;
