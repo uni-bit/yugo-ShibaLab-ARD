@@ -5,8 +5,9 @@ public class StageLightCreatureTarget : MonoBehaviour
 {
     public enum ReactionMode
     {
-        Hide,
-        Hop
+        HideLeaf,
+        Hop,
+        HideSoil
     }
 
     [SerializeField] private SpotlightSensor spotlightSensor;
@@ -95,7 +96,7 @@ public class StageLightCreatureTarget : MonoBehaviour
 
     private void ApplyReactionPose(float normalizedTime)
     {
-        if (reactionMode == ReactionMode.Hide)
+        if (reactionMode == ReactionMode.HideLeaf || reactionMode == ReactionMode.HideSoil)
         {
             float ease = 1f - Mathf.Pow(1f - normalizedTime, 3f);
             animatedRoot.localPosition = initialLocalPosition + (hideOffset * ease);

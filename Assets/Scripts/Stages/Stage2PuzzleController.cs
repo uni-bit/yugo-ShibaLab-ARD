@@ -23,22 +23,16 @@ public class Stage2PuzzleController : MonoBehaviour, IStageActivationHandler
 
     private Stage2State currentState;
     private PoseCalibrationCoordinator calibrationCoordinator;
+    private StageSequenceController sequenceController;
 
     private void OnEnable()
     {
-        currentState = Stage2State.Waiting;
-        ApplyInitialStageLighting();
+        ResetStageRuntime(false);
     }
 
     public void OnStageActivated()
     {
-        currentState = Stage2State.Waiting;
-        ApplyInitialStageLighting();
-        if (codeLockPuzzle != null)
-        {
-            codeLockPuzzle.ResetRuntimeState();
-        }
-        ResetStageCalibration();
+        ResetStageRuntime(true);
     }
 
     private void Update()
@@ -93,6 +87,33 @@ public class Stage2PuzzleController : MonoBehaviour, IStageActivationHandler
         currentState = Stage2State.Waiting;
     }
 
+    private void ResetStageRuntime(bool resetCalibration)
+    {
+        currentState = Stage2State.Waiting;
+        ApplyInitialStageLighting();
+        ResolveSequenceController();
+
+        if (revealPuzzle != null)
+        {
+            revealPuzzle.ResetRuntimeState();
+        }
+
+        if (codeLockPuzzle != null)
+        {
+            codeLockPuzzle.ResetRuntimeState();
+        }
+
+        if (completionSequence != null)
+        {
+            completionSequence.ResetRuntimeState();
+        }
+
+        if (resetCalibration)
+        {
+            ResetStageCalibration();
+        }
+    }
+
     private void ApplyInitialStageLighting()
     {
         if (Application.isPlaying && resetAmbientOnEnable)
@@ -108,6 +129,12 @@ public class Stage2PuzzleController : MonoBehaviour, IStageActivationHandler
             return;
         }
 
+        ResolveSequenceController();
+        if (sequenceController != null && sequenceController.PreviousStageIndex == 3)
+        {
+            return;
+        }
+
         if (calibrationCoordinator == null)
         {
             calibrationCoordinator = FindFirstObjectByType<PoseCalibrationCoordinator>();
@@ -116,6 +143,14 @@ public class Stage2PuzzleController : MonoBehaviour, IStageActivationHandler
         if (calibrationCoordinator != null)
         {
             calibrationCoordinator.ResetAllCalibration();
+        }
+    }
+
+    private void ResolveSequenceController()
+    {
+        if (sequenceController == null)
+        {
+            sequenceController = FindFirstObjectByType<StageSequenceController>();
         }
     }
 }

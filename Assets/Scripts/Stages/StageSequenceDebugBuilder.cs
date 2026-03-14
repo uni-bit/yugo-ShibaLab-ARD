@@ -169,9 +169,10 @@ public static class StageSequenceDebugBuilder
             sensor.Configure(null, null, creature.transform, creature.GetComponent<Renderer>(), creature.GetComponent<Collider>());
 
             StageLightCreatureTarget creatureTarget = creature.AddComponent<StageLightCreatureTarget>();
-            StageLightCreatureTarget.ReactionMode reaction = index % 2 == 0
-                ? StageLightCreatureTarget.ReactionMode.Hide
-                : StageLightCreatureTarget.ReactionMode.Hop;
+            StageLightCreatureTarget.ReactionMode reaction;
+            if (index == 0) reaction = StageLightCreatureTarget.ReactionMode.HideLeaf;
+            else if (index == 1) reaction = StageLightCreatureTarget.ReactionMode.Hop;
+            else reaction = StageLightCreatureTarget.ReactionMode.HideSoil;
             creatureTarget.Configure(sensor, creature.transform, reaction);
             creatureTargets[index] = creatureTarget;
 

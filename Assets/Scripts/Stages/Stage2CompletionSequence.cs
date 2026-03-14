@@ -126,6 +126,11 @@ public class Stage2CompletionSequence : MonoBehaviour, IStageActivationHandler
         ResetSequenceState();
     }
 
+    public void ResetRuntimeState()
+    {
+        ResetSequenceState();
+    }
+
     public void OnStageActivated()
     {
         ResetSequenceState();

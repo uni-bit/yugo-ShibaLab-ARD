@@ -127,6 +127,7 @@ public class StageAudioController : MonoBehaviour
         int currentStageIndex = stageSequenceController.CurrentStageIndex;
         if (currentStageIndex != lastStageIndex)
         {
+            StopAllPlayback();
             lastStageIndex = currentStageIndex;
             ApplyAmbientForCurrentStage();
             if (currentStageIndex == 2)
@@ -377,9 +378,19 @@ public class StageAudioController : MonoBehaviour
 
     private void PlayStage1ReactionClip(StageLightCreatureTarget target)
     {
-        AudioClip clip = target.CurrentReactionMode == StageLightCreatureTarget.ReactionMode.Hide
-            ? (stage1LeafMove != null ? stage1LeafMove : stage1SoilMove)
-            : stage1AnimalMove;
+        AudioClip clip;
+        if (target.CurrentReactionMode == StageLightCreatureTarget.ReactionMode.HideLeaf)
+        {
+            clip = stage1LeafMove;
+        }
+        else if (target.CurrentReactionMode == StageLightCreatureTarget.ReactionMode.HideSoil)
+        {
+            clip = stage1SoilMove;
+        }
+        else
+        {
+            clip = stage1AnimalMove;
+        }
         PlayOneShot(clip, 0.95f);
     }
 
@@ -530,6 +541,20 @@ public class StageAudioController : MonoBehaviour
         }
 
         oneShotSource.PlayOneShot(clip, Mathf.Clamp01(volumeScale));
+    }
+
+    private void StopAllPlayback()
+    {
+        if (ambientSource != null)
+        {
+            ambientSource.Stop();
+        }
+
+        if (oneShotSource != null)
+        {
+            oneShotSource.Stop();
+            oneShotSource.clip = null;
+        }
     }
 
 #if UNITY_EDITOR

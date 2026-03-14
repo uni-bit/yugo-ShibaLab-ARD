@@ -48,6 +48,11 @@ public class TestScreenVisualizer : MonoBehaviour
     [SerializeField] private bool androidInvertYaw;
     [SerializeField] private RotationAxisSource androidHorizontalAxisSource = RotationAxisSource.Z;
     [SerializeField] private RotationAxisSource androidVerticalAxisSource = RotationAxisSource.X;
+    [Header("Aim Correction")]
+    [Tooltip("立ち位置に応じた画面内ライト位置の補正。各面の右/上方向に対する正規化オフセット。")]
+    [SerializeField] private Vector2 screenAimOffsetNormalized = Vector2.zero;
+    [Tooltip("立ち位置に応じた感度補正。1,1 が等倍。中心基準で各面の横/縦の振れ幅を調整する。")]
+    [SerializeField] private Vector2 screenAimScale = Vector2.one;
     [Header("Touch Calibration")]
     [Tooltip("ZigSimのYが画面下向き正のとき true（iOS標準）。ワールド上方向と合わせるため反転する。")]
     [SerializeField] private bool invertTouchY = true;
@@ -226,10 +231,11 @@ public class TestScreenVisualizer : MonoBehaviour
         Vector3 worldTargetPoint;
         ProjectionTargetSurface surface;
         ResolveTargetPoint(rayOrigin, rayDirection, out surface, out worldTargetPoint);
+        ProjectionSurface activeSurface = surface == ProjectionTargetSurface.Left ? leftSurface : frontSurface;
+        worldTargetPoint = ApplySurfaceAimCorrection(activeSurface, worldTargetPoint);
 
         if (calibrationOffset.sqrMagnitude > 0.00001f)
         {
-            ProjectionSurface activeSurface = surface == ProjectionTargetSurface.Left ? leftSurface : frontSurface;
             if (activeSurface != null)
             {
                 worldTargetPoint += activeSurface.transform.right * (calibrationOffset.x * activeSurface.Width);
@@ -250,6 +256,33 @@ public class TestScreenVisualizer : MonoBehaviour
         }
 
         sourceLight.transform.rotation = Quaternion.LookRotation(targetDirection.normalized, Vector3.up);
+    }
+
+    private Vector3 ApplySurfaceAimCorrection(ProjectionSurface surface, Vector3 worldTargetPoint)
+    {
+        if (surface == null)
+        {
+            return worldTargetPoint;
+        }
+
+        Vector3 local = surface.transform.InverseTransformPoint(worldTargetPoint);
+        float normalizedX = local.x / Mathf.Max(0.0001f, surface.Width);
+        float normalizedY = local.y / Mathf.Max(0.0001f, surface.Height);
+
+        Vector2 clampedScale = new Vector2(
+            Mathf.Max(0.01f, screenAimScale.x),
+            Mathf.Max(0.01f, screenAimScale.y));
+
+        normalizedX = (normalizedX * clampedScale.x) + screenAimOffsetNormalized.x;
+        normalizedY = (normalizedY * clampedScale.y) + screenAimOffsetNormalized.y;
+
+        normalizedX = Mathf.Clamp(normalizedX, -0.5f, 0.5f);
+        normalizedY = Mathf.Clamp(normalizedY, -0.5f, 0.5f);
+
+        local.x = normalizedX * surface.Width;
+        local.y = normalizedY * surface.Height;
+        local.z = 0f;
+        return surface.transform.TransformPoint(local);
     }
 
     private Vector3 GetRayDirection(Transform pointerTransform)

@@ -77,12 +77,13 @@ public class Stage4SequenceController : MonoBehaviour, IStageActivationHandler
     {
         if (!Application.isPlaying)
         {
+            CleanupEditorOverlayArtifacts();
             return;
         }
 
         cachedController = FindFirstObjectByType<StageSequenceController>();
         stagePuzzle = GetComponent<Stage3RockHintPuzzle>();
-    DisableStage4PuzzleIfPresent();
+        DisableStage4PuzzleIfPresent();
         EnsurePresentationOverlays();
         ResetPresentationState();
 
@@ -101,6 +102,11 @@ public class Stage4SequenceController : MonoBehaviour, IStageActivationHandler
 
     private void OnValidate()
     {
+        if (!Application.isPlaying)
+        {
+            return;
+        }
+
         EnsurePresentationOverlays();
         ApplyOverlayState();
     }
@@ -115,7 +121,11 @@ public class Stage4SequenceController : MonoBehaviour, IStageActivationHandler
 
     private void LateUpdate()
     {
-        EnsurePresentationOverlays();
+        if (OverlayDisplaysNeedRefresh())
+        {
+            EnsurePresentationOverlays();
+        }
+
         ApplyOverlayState();
     }
 
@@ -291,55 +301,216 @@ public class Stage4SequenceController : MonoBehaviour, IStageActivationHandler
     private void EnsurePresentationOverlays()
     {
         int displayCount = Mathf.Max(3, Display.displays.Length);
-        if (overlayDisplays != null && overlayDisplays.Length >= displayCount)
+        if (overlayDisplays != null
+            && overlayDisplays.Length == displayCount
+            && !OverlayDisplaysNeedRefresh())
         {
             return;
         }
 
-        DestroyPresentationOverlays();
-        overlayDisplays = new OverlayDisplay[displayCount];
         overlayFont = overlayFont != null
             ? overlayFont
             : Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf") ?? Resources.GetBuiltinResource<Font>("Arial.ttf");
 
+        Dictionary<int, OverlayDisplay> existingDisplays = CollectExistingOverlayDisplays();
+        overlayDisplays = new OverlayDisplay[displayCount];
+
         for (int index = 0; index < displayCount; index++)
         {
-            GameObject canvasObject = new GameObject("Stage4 Overlay Display" + index);
-            canvasObject.transform.SetParent(transform, false);
-
-            Canvas canvas = canvasObject.AddComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvas.targetDisplay = index;
-            canvas.sortingOrder = 32760;
-
-            canvasObject.AddComponent<CanvasScaler>();
-
-            GameObject backgroundObject = new GameObject("Background");
-            backgroundObject.transform.SetParent(canvasObject.transform, false);
-            Image background = backgroundObject.AddComponent<Image>();
-            background.raycastTarget = false;
-            StretchRect(background.rectTransform);
-
-            GameObject messageObject = new GameObject("Completion Message");
-            messageObject.transform.SetParent(canvasObject.transform, false);
-            Text message = messageObject.AddComponent<Text>();
-            message.raycastTarget = false;
-            message.alignment = TextAnchor.MiddleCenter;
-            message.font = overlayFont;
-            message.fontSize = completionFontSize;
-            message.text = completionMessage;
-            StretchRect(message.rectTransform);
-
-            overlayDisplays[index] = new OverlayDisplay
+            if (!existingDisplays.TryGetValue(index, out OverlayDisplay display) || display == null)
             {
-                DisplayIndex = index,
-                Canvas = canvas,
-                Background = background,
-                Message = message
-            };
+                display = CreateOverlayDisplay(index);
+            }
 
-            ConfigureMessageRect(message.rectTransform, index);
+            overlayDisplays[index] = display;
+
+            ConfigureOverlayDisplay(display, index);
         }
+    }
+
+    private void CleanupEditorOverlayArtifacts()
+    {
+        overlayDisplays = null;
+
+        for (int index = transform.childCount - 1; index >= 0; index--)
+        {
+            Transform child = transform.GetChild(index);
+            if (child == null || !child.name.StartsWith("Stage4 Overlay Display"))
+            {
+                continue;
+            }
+
+            DestroyOverlayObject(child.gameObject);
+        }
+    }
+
+    private OverlayDisplay CreateOverlayDisplay(int displayIndex)
+    {
+        GameObject canvasObject = new GameObject("Stage4 Overlay Display" + displayIndex);
+        canvasObject.transform.SetParent(transform, false);
+
+        Canvas canvas = canvasObject.AddComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.targetDisplay = displayIndex;
+        canvas.sortingOrder = 32760;
+
+        canvasObject.AddComponent<CanvasScaler>();
+
+        GameObject backgroundObject = new GameObject("Background");
+        backgroundObject.transform.SetParent(canvasObject.transform, false);
+        Image background = backgroundObject.AddComponent<Image>();
+        background.raycastTarget = false;
+        StretchRect(background.rectTransform);
+
+        GameObject messageObject = new GameObject("Completion Message");
+        messageObject.transform.SetParent(canvasObject.transform, false);
+        Text message = messageObject.AddComponent<Text>();
+        message.raycastTarget = false;
+        message.alignment = TextAnchor.MiddleCenter;
+        message.font = overlayFont;
+        message.fontSize = completionFontSize;
+        message.text = completionMessage;
+        StretchRect(message.rectTransform);
+
+        return new OverlayDisplay
+        {
+            DisplayIndex = displayIndex,
+            Canvas = canvas,
+            Background = background,
+            Message = message
+        };
+    }
+
+    private Dictionary<int, OverlayDisplay> CollectExistingOverlayDisplays()
+    {
+        Dictionary<int, OverlayDisplay> displays = new Dictionary<int, OverlayDisplay>();
+
+        for (int index = transform.childCount - 1; index >= 0; index--)
+        {
+            Transform child = transform.GetChild(index);
+            if (child == null || !child.name.StartsWith("Stage4 Overlay Display"))
+            {
+                continue;
+            }
+
+            Canvas canvas = child.GetComponent<Canvas>();
+            if (!TryBuildOverlayDisplay(canvas, out OverlayDisplay display))
+            {
+                DestroyOverlayObject(child.gameObject);
+                continue;
+            }
+
+            int displayIndex = Mathf.Max(0, canvas.targetDisplay);
+            if (displays.ContainsKey(displayIndex))
+            {
+                DestroyOverlayObject(child.gameObject);
+                continue;
+            }
+
+            displays.Add(displayIndex, display);
+        }
+
+        return displays;
+    }
+
+    private bool TryBuildOverlayDisplay(Canvas canvas, out OverlayDisplay display)
+    {
+        display = null;
+        if (canvas == null)
+        {
+            return false;
+        }
+
+        Image background = null;
+        Text message = null;
+
+        for (int index = 0; index < canvas.transform.childCount; index++)
+        {
+            Transform child = canvas.transform.GetChild(index);
+            if (child == null)
+            {
+                continue;
+            }
+
+            if (background == null)
+            {
+                background = child.GetComponent<Image>();
+            }
+
+            if (message == null)
+            {
+                message = child.GetComponent<Text>();
+            }
+        }
+
+        if (background == null || message == null)
+        {
+            return false;
+        }
+
+        display = new OverlayDisplay
+        {
+            DisplayIndex = Mathf.Max(0, canvas.targetDisplay),
+            Canvas = canvas,
+            Background = background,
+            Message = message
+        };
+        return true;
+    }
+
+    private void ConfigureOverlayDisplay(OverlayDisplay display, int displayIndex)
+    {
+        if (display == null || display.Canvas == null || display.Background == null || display.Message == null)
+        {
+            return;
+        }
+
+        display.DisplayIndex = displayIndex;
+        display.Canvas.name = "Stage4 Overlay Display" + displayIndex;
+        display.Canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        display.Canvas.targetDisplay = displayIndex;
+        display.Canvas.sortingOrder = 32760;
+
+        if (display.Canvas.GetComponent<CanvasScaler>() == null)
+        {
+            display.Canvas.gameObject.AddComponent<CanvasScaler>();
+        }
+
+        display.Background.name = "Background";
+        display.Background.raycastTarget = false;
+        StretchRect(display.Background.rectTransform);
+
+        display.Message.name = "Completion Message";
+        display.Message.raycastTarget = false;
+        display.Message.alignment = TextAnchor.MiddleCenter;
+        display.Message.font = overlayFont;
+        display.Message.fontSize = completionFontSize;
+        display.Message.text = completionMessage;
+        StretchRect(display.Message.rectTransform);
+        ConfigureMessageRect(display.Message.rectTransform, displayIndex);
+    }
+
+    private bool OverlayDisplaysNeedRefresh()
+    {
+        if (overlayDisplays == null || overlayDisplays.Length == 0)
+        {
+            return true;
+        }
+
+        for (int index = 0; index < overlayDisplays.Length; index++)
+        {
+            OverlayDisplay display = overlayDisplays[index];
+            if (display == null
+                || display.Canvas == null
+                || display.Background == null
+                || display.Message == null
+                || display.Canvas.targetDisplay != index)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void ConfigureMessageRect(RectTransform rectTransform, int displayIndex)
@@ -385,10 +556,26 @@ public class Stage4SequenceController : MonoBehaviour, IStageActivationHandler
                 continue;
             }
 
-            Destroy(display.Canvas.gameObject);
+            DestroyOverlayObject(display.Canvas.gameObject);
         }
 
         overlayDisplays = null;
+    }
+
+    private void DestroyOverlayObject(GameObject target)
+    {
+        if (target == null)
+        {
+            return;
+        }
+
+        if (Application.isPlaying)
+        {
+            Destroy(target);
+            return;
+        }
+
+        DestroyImmediate(target);
     }
 
     private void ResetPresentationState()

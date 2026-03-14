@@ -12,6 +12,11 @@ public class StageSymbolNumberRevealPuzzle : MonoBehaviour
 
     private void OnEnable()
     {
+        ResetRuntimeState();
+    }
+
+    public void ResetRuntimeState()
+    {
         IsSolved = false;
 
         for (int index = 0; index < revealTargets.Length; index++)

@@ -48,6 +48,7 @@ public class StageSequenceController : MonoBehaviour
     private PoseTestBootstrap poseBootstrap;
 
     public int CurrentStageIndex { get; private set; }
+    public int PreviousStageIndex { get; private set; } = -1;
     public int StageCount => stageRoots != null ? stageRoots.Length : 0;
 
     private void Reset()
@@ -353,11 +354,13 @@ public class StageSequenceController : MonoBehaviour
     {
         if (stageRoots == null || stageRoots.Length == 0)
         {
+            PreviousStageIndex = CurrentStageIndex;
             CurrentStageIndex = 0;
             return;
         }
 
         int clampedIndex = Mathf.Clamp(activeIndex, 0, stageRoots.Length - 1);
+        PreviousStageIndex = CurrentStageIndex;
         CurrentStageIndex = clampedIndex;
 
         for (int index = 0; index < stageRoots.Length; index++)

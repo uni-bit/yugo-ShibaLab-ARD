@@ -44,6 +44,8 @@ public class UdpQuaternionReceiver : MonoBehaviour
 
     private readonly object syncRoot = new object();
     private static readonly Regex FloatRegex = new Regex(@"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?", RegexOptions.Compiled);
+    private static readonly Regex JsonQuaternionRegex = new Regex(@"""quaternion""\s*:\s*\{\s*""x""\s*:\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)\s*,\s*""y""\s*:\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)\s*,\s*""z""\s*:\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)\s*,\s*""w""\s*:\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex JsonTouchRegex = new Regex(@"""touch""\s*:\s*\[\s*\{\s*""x""\s*:\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)\s*,\s*""y""\s*:\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private UdpClient udpClient;
     private Thread receiveThread;
@@ -563,16 +565,29 @@ public class UdpQuaternionReceiver : MonoBehaviour
             return false;
         }
 
+        float x;
+        float y;
+        float z;
+        float w;
+
+        Match jsonMatch = JsonQuaternionRegex.Match(text);
+        if (jsonMatch.Success)
+        {
+            if (float.TryParse(jsonMatch.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out x)
+                && float.TryParse(jsonMatch.Groups[2].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out y)
+                && float.TryParse(jsonMatch.Groups[3].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out z)
+                && float.TryParse(jsonMatch.Groups[4].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out w))
+            {
+                quaternion = new Quaternion(x, y, z, w);
+                return IsFiniteQuaternion(quaternion);
+            }
+        }
+
         MatchCollection matches = FloatRegex.Matches(text);
         if (matches.Count < 4)
         {
             return false;
         }
-
-        float x;
-        float y;
-        float z;
-        float w;
 
         if (!float.TryParse(matches[0].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out x)
             || !float.TryParse(matches[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out y)
@@ -1118,27 +1133,52 @@ public class UdpQuaternionReceiver : MonoBehaviour
             return false;
         }
 
-        string textPayload = Encoding.UTF8.GetString(payload).Trim('\0', ' ', '\r', '\n', '\t').ToLowerInvariant();
-        if (string.IsNullOrEmpty(textPayload)
-            || (!textPayload.Contains("touch")
-                && !textPayload.Contains("pointer")
-                && !textPayload.Contains("tap")
-                && !textPayload.Contains("press")))
+        string textPayload = Encoding.UTF8.GetString(payload).Trim('\0', ' ', '\r', '\n', '\t');
+        
+        // Android ZIG SIM JSON Touch format handling
+        Match jsonTouchMatch = JsonTouchRegex.Match(textPayload);
+        if (jsonTouchMatch.Success)
+        {
+            if (float.TryParse(jsonTouchMatch.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out float x) &&
+                float.TryParse(jsonTouchMatch.Groups[2].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out float y))
+            {
+                lock (syncRoot)
+                {
+                    latestTouchX = x;
+                    latestTouchY = y;
+                    LatestTouchPosition = new Vector2(x, y);
+                    hasPendingTouchPosition = true;
+                }
+                return TryRequestRecenterFromTouchState(true);
+            }
+        }
+        else if (textPayload.Contains("\"touch\"") && (textPayload.Contains("\"touch\":[]") || textPayload.Contains("\"touch\": []") || textPayload.Contains("\"touch\":null")))
+        {
+            // Empty touch array explicitly means NO touches
+            return TryRequestRecenterFromTouchState(false);
+        }
+
+        string lowerPayload = textPayload.ToLowerInvariant();
+        if (string.IsNullOrEmpty(lowerPayload)
+            || (!lowerPayload.Contains("touch")
+                && !lowerPayload.Contains("pointer")
+                && !lowerPayload.Contains("tap")
+                && !lowerPayload.Contains("press")))
         {
             return false;
         }
 
         bool hasActiveTouch = true;
-        bool indicatesTouchRelease = textPayload.Contains("false")
-            || textPayload.Contains("ended")
-            || textPayload.Contains("cancel")
-            || textPayload.Contains("up");
-        bool indicatesTouchPress = textPayload.Contains("true")
-            || textPayload.Contains("down")
-            || textPayload.Contains("begin")
-            || textPayload.Contains("start")
-            || textPayload.Contains("tap")
-            || textPayload.Contains("press");
+        bool indicatesTouchRelease = lowerPayload.Contains("false")
+            || lowerPayload.Contains("ended")
+            || lowerPayload.Contains("cancel")
+            || lowerPayload.Contains("up");
+        bool indicatesTouchPress = lowerPayload.Contains("true")
+            || lowerPayload.Contains("down")
+            || lowerPayload.Contains("begin")
+            || lowerPayload.Contains("start")
+            || lowerPayload.Contains("tap")
+            || lowerPayload.Contains("press");
 
         if (indicatesTouchRelease && !indicatesTouchPress)
         {
