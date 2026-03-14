@@ -9,10 +9,18 @@ using UnityEditor;
 public class StageAudioController : MonoBehaviour
 {
     private const string Stage1AmbientPath = "Assets/assets/sounds/環境音/stage1/stage1environment.mp3";
+    private const string Stage1AmbientForestBasePath = "Assets/assets/sounds/環境音/stage1/素材/forest-base.mp3";
+    private const string Stage1AmbientKotoriPath = "Assets/assets/sounds/環境音/stage1/素材/kotori.mp3";
+    private const string Stage1AmbientRiverPath = "Assets/assets/sounds/環境音/stage1/素材/river.mp3";
+    private const string Stage1AmbientSuzumushiPath = "Assets/assets/sounds/環境音/stage1/素材/suzumusi.mp3";
+    private const string Stage1AmbientWindPath = "Assets/assets/sounds/環境音/stage1/素材/wind.mp3";
     private const string Stage2AmbientPath = "Assets/assets/sounds/環境音/stage2/stage2environment.MP3";
+    private const string Stage2AmbientCavePath = "Assets/assets/sounds/環境音/stage2/素材/doukutu (1).mp3";
     private const string Stage3AmbientPath = "Assets/assets/sounds/環境音/stage3/stage3environment.MP3";
     private const string Stage1AnimalMovePath = "Assets/assets/sounds/環境音/stage1/animal-move-gimmick.MP3";
+    private const string Stage1AnimalMoveExtraPath = "Assets/assets/sounds/環境音/stage1/素材/doubutuidou.mp3";
     private const string Stage1LeafMovePath = "Assets/assets/sounds/環境音/stage1/tree-move-reaf-gimmick.mp3";
+    private const string Stage1LeafMoveExtraPath = "Assets/assets/sounds/環境音/stage1/素材/kusa-syoudoubutu.mp3";
     private const string Stage1SoilMovePath = "Assets/assets/sounds/環境音/stage1/tree-move-soil-gimmick.mp3";
     private const string Stage2DestroyPath = "Assets/assets/sounds/環境音/stage2/gimmick壁破壊候補/破壊音.mp3";
     private const string Stage2DestroyPath2 = "Assets/assets/sounds/環境音/stage2/gimmick壁破壊候補/破壊音2.mp3";
@@ -30,6 +38,7 @@ public class StageAudioController : MonoBehaviour
 
     [Header("Sources")]
     [SerializeField] private AudioSource ambientSource;
+    private List<AudioSource> extraAmbientSources = new List<AudioSource>();
     [SerializeField] private AudioSource oneShotSource;
 
     [Header("Master Volume")]
@@ -43,11 +52,13 @@ public class StageAudioController : MonoBehaviour
 
     [Header("Clips")]
     [SerializeField] private AudioClip stage1Ambient;
+    [SerializeField] private AudioClip[] stage1ExtraAmbients = new AudioClip[0];
     [SerializeField] private AudioClip stage2Ambient;
+    [SerializeField] private AudioClip[] stage2ExtraAmbients = new AudioClip[0];
     [SerializeField] private AudioClip stage3Ambient;
     [SerializeField] private AudioClip commonSuccess;
-    [SerializeField] private AudioClip stage1AnimalMove;
-    [SerializeField] private AudioClip stage1LeafMove;
+    [SerializeField] private AudioClip[] stage1AnimalMoves = new AudioClip[0];
+    [SerializeField] private AudioClip[] stage1LeafMoves = new AudioClip[0];
     [SerializeField] private AudioClip stage1SoilMove;
     [SerializeField] private AudioClip stage2Destroy;
     [SerializeField] private AudioClip stage2DestroySecondary;
@@ -56,6 +67,14 @@ public class StageAudioController : MonoBehaviour
     [SerializeField] private AudioClip stage3StoneFall;
     [SerializeField] private AudioClip[] stage2WaterDrops = new AudioClip[0];
     [SerializeField] private AudioClip[] stage3GlowClips = new AudioClip[0];
+
+    [Header("Additional / Missing SE To Be Assigned")]
+    [SerializeField] private AudioClip stage1PuzzleClear;
+    [SerializeField] private AudioClip stage2CodeUnlockClear;
+    [SerializeField] private AudioClip stage2SymbolRevealSe;
+    [SerializeField] private AudioClip stage2DialTurnSe;
+    [SerializeField] private AudioClip stage3PuzzleClear;
+    [SerializeField] private AudioClip stage4SequenceClear;
 
     private StageSequenceController stageSequenceController;
     private StageLightCreatureTarget[] stage1Targets = new StageLightCreatureTarget[0];
@@ -73,7 +92,7 @@ public class StageAudioController : MonoBehaviour
     private int lastStageIndex = -1;
     private bool lastStage1Solved;
     private bool lastStage2Solved;
-    private bool lastStage2CompletionPlaying;
+    private bool lastStage2Collapsing;
     private bool lastStage3Green;
     private bool lastStage3Blue;
     private bool lastStage3Complete;
@@ -86,19 +105,67 @@ public class StageAudioController : MonoBehaviour
     {
         EnsureAudioSources();
 #if UNITY_EDITOR
-        AutoAssignClips();
+        ForceLoadClipsInEditor();
 #endif
     }
 
     private void Awake()
     {
         EnsureAudioSources();
-        ResolveReferences(true);
 #if UNITY_EDITOR
-        AutoAssignClips();
+        ForceLoadClipsInEditor();
 #endif
+        ResolveReferences(true);
         ApplyAmbientForCurrentStage();
     }
+
+#if UNITY_EDITOR
+    private void ForceLoadClipsInEditor()
+    {
+        AudioClip LoadIfNull(AudioClip clip, string searchStr)
+        {
+            if (clip != null) return clip;
+            string[] guids = UnityEditor.AssetDatabase.FindAssets(searchStr + " t:AudioClip");
+            if (guids.Length > 0)
+                return UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>(UnityEditor.AssetDatabase.GUIDToAssetPath(guids[0]));
+            return null;
+        }
+
+        AudioClip[] LoadArrayIfEmpty(AudioClip[] clips, string[] searchStrs)
+        {
+            if (clips != null && clips.Length > 0 && clips[0] != null) return clips;
+            var list = new System.Collections.Generic.List<AudioClip>();
+            foreach (var s in searchStrs)
+            {
+                var c = LoadIfNull(null, s);
+                if (c != null) list.Add(c);
+            }
+            return list.ToArray();
+        }
+
+        stage1Ambient = LoadIfNull(stage1Ambient, "stage1environment");
+        stage1ExtraAmbients = LoadArrayIfEmpty(stage1ExtraAmbients, new[] { "forest-base", "kotori", "river", "suzumusi", "wind" });
+        stage2Ambient = LoadIfNull(stage2Ambient, "stage2environment");
+        stage2ExtraAmbients = LoadArrayIfEmpty(stage2ExtraAmbients, new[] { "doukutu" });
+        stage3Ambient = LoadIfNull(stage3Ambient, "stage3environment");
+        commonSuccess = LoadIfNull(commonSuccess, "succes");
+
+        stage1AnimalMoves = LoadArrayIfEmpty(stage1AnimalMoves, new[] { "animal-move-gimmick", "doubutuidou" });
+        stage1LeafMoves = LoadArrayIfEmpty(stage1LeafMoves, new[] { "tree-move-reaf-gimmick", "kusa-syoudoubutu" });
+        stage1SoilMove = LoadIfNull(stage1SoilMove, "tree-move-soil-gimmick");
+
+        stage2Destroy = LoadIfNull(stage2Destroy, "破壊音");
+        stage2DestroySecondary = LoadIfNull(stage2DestroySecondary, "破壊音2");
+        stage2Explosion = LoadIfNull(stage2Explosion, "爆発");
+
+        stage2WaterDrops = LoadArrayIfEmpty(stage2WaterDrops, new[] { "Water_Drop03-1", "Water_Drop03-2", "Water_Drop03-3", "Water_Drop03-4" });
+
+        stage3RockRise = LoadIfNull(stage3RockRise, "岩が浮く瞬間の振動音1");
+        stage3StoneFall = LoadIfNull(stage3StoneFall, "砂や小石が落ちる音2");
+
+        stage3GlowClips = LoadArrayIfEmpty(stage3GlowClips, new[] { "hikari1", "hikari2", "hikari3" });
+    }
+#endif
 
     private void OnEnable()
     {
@@ -110,7 +177,7 @@ public class StageAudioController : MonoBehaviour
     {
         EnsureAudioSources();
 #if UNITY_EDITOR
-        AutoAssignClips();
+        ForceLoadClipsInEditor();
 #endif
     }
 
@@ -156,6 +223,18 @@ public class StageAudioController : MonoBehaviour
 
     private void EnsureAudioSources()
     {
+        if (FindFirstObjectByType<AudioListener>() == null)
+        {
+            if (Camera.main != null)
+            {
+                Camera.main.gameObject.AddComponent<AudioListener>();
+            }
+            else
+            {
+                gameObject.AddComponent<AudioListener>();
+            }
+        }
+
         if (ambientSource == null)
         {
             ambientSource = GetOrCreateSource("Ambient Source");
@@ -235,7 +314,10 @@ public class StageAudioController : MonoBehaviour
             ? stage4Root.GetComponentInChildren<Stage4SequenceController>(true)
             : null;
 
-        InitializeStateCache();
+        if (forceRefresh)
+        {
+            InitializeStateCache();
+        }
     }
 
     private Dictionary<int, Transform> CollectStageRoots()
@@ -290,10 +372,10 @@ public class StageAudioController : MonoBehaviour
 
         lastStage1Solved = stage1Puzzle != null && stage1Puzzle.IsSolved;
         lastStage2Solved = stage2CodeLock != null && stage2CodeLock.IsSolved;
-        lastStage2CompletionPlaying = stage2CompletionSequence != null && stage2CompletionSequence.IsPlaying;
+        lastStage2Collapsing = stage2CompletionSequence != null && stage2CompletionSequence.IsCollapsing;
         lastStage3Green = stage3Puzzle != null && stage3Puzzle.GreenActivated;
         lastStage3Blue = stage3Puzzle != null && stage3Puzzle.BlueActivated;
-        lastStage3Complete = stage3Puzzle != null && stage3Puzzle.IsComplete;
+        lastStage3Complete = stage3Puzzle != null && stage3Puzzle.IsFinaleStarted;
         lastStage4ActivationCount = stage4Sequence != null ? stage4Sequence.ActivationCount : 0;
         lastStage4MessageShownCount = stage4Sequence != null ? stage4Sequence.MessageShownCount : 0;
         lastStage4ReturnTriggeredCount = stage4Sequence != null ? stage4Sequence.ReturnTriggeredCount : 0;
@@ -306,25 +388,30 @@ public class StageAudioController : MonoBehaviour
             return;
         }
 
-        AudioClip ambientClip = GetAmbientClip(stageSequenceController.CurrentStageIndex);
+        int currentStageIndex = stageSequenceController.CurrentStageIndex;
+        AudioClip ambientClip = GetAmbientClip(currentStageIndex);
         ambientSource.volume = ambientVolume;
 
         if (ambientClip == null)
         {
             ambientSource.Stop();
             ambientSource.clip = null;
-            return;
+        }
+        else
+        {
+            if (ambientSource.clip != ambientClip)
+            {
+                ambientSource.clip = ambientClip;
+            }
+
+            if (!ambientSource.isPlaying)
+            {
+                ambientSource.Play();
+            }
         }
 
-        if (ambientSource.clip != ambientClip)
-        {
-            ambientSource.clip = ambientClip;
-        }
-
-        if (!ambientSource.isPlaying)
-        {
-            ambientSource.Play();
-        }
+        AudioClip[] extraAmbients = GetExtraAmbientClips(currentStageIndex);
+        UpdateExtraAmbientSources(extraAmbients);
     }
 
     private AudioClip GetAmbientClip(int stageIndex)
@@ -340,6 +427,60 @@ public class StageAudioController : MonoBehaviour
                 return stage3Ambient;
             default:
                 return null;
+        }
+    }
+
+    private AudioClip[] GetExtraAmbientClips(int stageIndex)
+    {
+        switch (stageIndex)
+        {
+            case 0:
+                return stage1ExtraAmbients;
+            case 1:
+                return stage2ExtraAmbients;
+            default:
+                return new AudioClip[0];
+        }
+    }
+
+    private void UpdateExtraAmbientSources(AudioClip[] requiredClips)
+    {
+        if (requiredClips == null)
+        {
+            requiredClips = new AudioClip[0];
+        }
+
+        for (int i = 0; i < extraAmbientSources.Count; i++)
+        {
+            if (extraAmbientSources[i] != null)
+            {
+                extraAmbientSources[i].Stop();
+                extraAmbientSources[i].clip = null;
+            }
+        }
+
+        while (extraAmbientSources.Count < requiredClips.Length)
+        {
+            AudioSource newSource = GetOrCreateSource("Extra Ambient Source " + extraAmbientSources.Count);
+            newSource.loop = true;
+            newSource.playOnAwake = true;
+            newSource.spatialBlend = 0f;
+            extraAmbientSources.Add(newSource);
+        }
+
+        for (int i = 0; i < requiredClips.Length; i++)
+        {
+            AudioSource source = extraAmbientSources[i];
+            AudioClip clip = requiredClips[i];
+            if (source != null && clip != null)
+            {
+                source.volume = ambientVolume;
+                source.clip = clip;
+                if (!source.isPlaying)
+                {
+                    source.Play();
+                }
+            }
         }
     }
 
@@ -371,17 +512,20 @@ public class StageAudioController : MonoBehaviour
         bool stageSolved = stage1Puzzle != null && stage1Puzzle.IsSolved;
         if (!lastStage1Solved && stageSolved)
         {
-            PlayOneShot(commonSuccess, 1f);
+            PlayOneShot(stage1PuzzleClear != null ? stage1PuzzleClear : commonSuccess, 1f);
         }
         lastStage1Solved = stageSolved;
     }
 
     private void PlayStage1ReactionClip(StageLightCreatureTarget target)
     {
-        AudioClip clip;
+        AudioClip clip = null;
         if (target.CurrentReactionMode == StageLightCreatureTarget.ReactionMode.HideLeaf)
         {
-            clip = stage1LeafMove;
+            if (stage1LeafMoves != null && stage1LeafMoves.Length > 0)
+            {
+                clip = stage1LeafMoves[Random.Range(0, stage1LeafMoves.Length)];
+            }
         }
         else if (target.CurrentReactionMode == StageLightCreatureTarget.ReactionMode.HideSoil)
         {
@@ -389,7 +533,10 @@ public class StageAudioController : MonoBehaviour
         }
         else
         {
-            clip = stage1AnimalMove;
+            if (stage1AnimalMoves != null && stage1AnimalMoves.Length > 0)
+            {
+                clip = stage1AnimalMoves[Random.Range(0, stage1AnimalMoves.Length)];
+            }
         }
         PlayOneShot(clip, 0.95f);
     }
@@ -408,7 +555,8 @@ public class StageAudioController : MonoBehaviour
             bool previousRevealed = revealStates.TryGetValue(id, out bool cachedReveal) && cachedReveal;
             if (isActiveStage && !previousRevealed && target.HasBeenRevealed)
             {
-                PlayNextWaterDrop();
+                if (stage2SymbolRevealSe != null) PlayOneShot(stage2SymbolRevealSe, 0.9f);
+                else PlayNextWaterDrop();
             }
 
             revealStates[id] = target.HasBeenRevealed;
@@ -426,7 +574,8 @@ public class StageAudioController : MonoBehaviour
             int previousDigit = dialDigitStates.TryGetValue(id, out int cachedDigit) ? cachedDigit : column.CurrentDigit;
             if (isActiveStage && previousDigit != column.CurrentDigit)
             {
-                PlayNextWaterDrop();
+                if (stage2DialTurnSe != null) PlayOneShot(stage2DialTurnSe, 0.9f);
+                else PlayNextWaterDrop();
             }
 
             dialDigitStates[id] = column.CurrentDigit;
@@ -435,18 +584,18 @@ public class StageAudioController : MonoBehaviour
         bool codeSolved = stage2CodeLock != null && stage2CodeLock.IsSolved;
         if (isActiveStage && !lastStage2Solved && codeSolved)
         {
-            PlayOneShot(commonSuccess, 1f);
+            PlayOneShot(stage2CodeUnlockClear != null ? stage2CodeUnlockClear : commonSuccess, 1f);
         }
         lastStage2Solved = codeSolved;
 
-        bool completionPlaying = stage2CompletionSequence != null && stage2CompletionSequence.IsPlaying;
-        if (isActiveStage && !lastStage2CompletionPlaying && completionPlaying)
+        bool isCollapsing = stage2CompletionSequence != null && stage2CompletionSequence.IsCollapsing;
+        if (isActiveStage && !lastStage2Collapsing && isCollapsing)
         {
             PlayOneShot(stage2Explosion, 1f);
             PlayOneShot(stage2Destroy, 0.92f);
             PlayOneShot(stage2DestroySecondary, 0.88f);
         }
-        lastStage2CompletionPlaying = completionPlaying;
+        lastStage2Collapsing = isCollapsing;
     }
 
     private void PlayNextWaterDrop()
@@ -470,7 +619,7 @@ public class StageAudioController : MonoBehaviour
 
         bool green = puzzle.GreenActivated;
         bool blue = puzzle.BlueActivated;
-        bool complete = puzzle.IsComplete;
+        bool complete = puzzle.IsFinaleStarted;
 
         if (isActiveStage && !lastGreenState && green)
         {
@@ -488,7 +637,7 @@ public class StageAudioController : MonoBehaviour
             PlayOneShot(stage3StoneFall, 0.9f);
             if (stageIndex == 2)
             {
-                PlayOneShot(commonSuccess, 0.95f);
+                PlayOneShot(stage3PuzzleClear != null ? stage3PuzzleClear : commonSuccess, 0.95f);
             }
         }
 
@@ -523,7 +672,7 @@ public class StageAudioController : MonoBehaviour
         if (stage4Sequence.MessageShownCount != lastStage4MessageShownCount)
         {
             lastStage4MessageShownCount = stage4Sequence.MessageShownCount;
-            PlayOneShot(commonSuccess, 1f);
+            PlayOneShot(stage4SequenceClear != null ? stage4SequenceClear : commonSuccess, 1f);
         }
 
         if (stage4Sequence.ReturnTriggeredCount != lastStage4ReturnTriggeredCount)
@@ -535,9 +684,24 @@ public class StageAudioController : MonoBehaviour
 
     private void PlayOneShot(AudioClip clip, float volumeScale)
     {
-        if (clip == null || oneShotSource == null)
+        if (clip == null)
+        {
+            Debug.LogWarning("[StageAudioController] SEを再生しようとしましたがクリップがNullです。インスペクターのアサインか、ファイルパスを確認してください。");
+            return;
+        }
+
+        if (oneShotSource == null)
         {
             return;
+        }
+
+        if (!oneShotSource.gameObject.activeInHierarchy)
+        {
+            oneShotSource.gameObject.SetActive(true);
+        }
+        if (!oneShotSource.enabled)
+        {
+            oneShotSource.enabled = true;
         }
 
         oneShotSource.PlayOneShot(clip, Mathf.Clamp01(volumeScale));
@@ -550,54 +714,82 @@ public class StageAudioController : MonoBehaviour
             ambientSource.Stop();
         }
 
+        for (int i = 0; i < extraAmbientSources.Count; i++)
+        {
+            if (extraAmbientSources[i] != null)
+            {
+                extraAmbientSources[i].Stop();
+            }
+        }
+
         if (oneShotSource != null)
         {
             oneShotSource.Stop();
-            oneShotSource.clip = null;
         }
     }
 
 #if UNITY_EDITOR
     public void AutoAssignClips()
     {
-        stage1Ambient = stage1Ambient != null ? stage1Ambient : LoadClip(Stage1AmbientPath);
-        stage2Ambient = stage2Ambient != null ? stage2Ambient : LoadClip(Stage2AmbientPath);
-        stage3Ambient = stage3Ambient != null ? stage3Ambient : LoadClip(Stage3AmbientPath);
-        commonSuccess = commonSuccess != null ? commonSuccess : LoadClip(CommonSuccessPath);
-        stage1AnimalMove = stage1AnimalMove != null ? stage1AnimalMove : LoadClip(Stage1AnimalMovePath);
-        stage1LeafMove = stage1LeafMove != null ? stage1LeafMove : LoadClip(Stage1LeafMovePath);
-        stage1SoilMove = stage1SoilMove != null ? stage1SoilMove : LoadClip(Stage1SoilMovePath);
-        stage2Destroy = stage2Destroy != null ? stage2Destroy : LoadClip(Stage2DestroyPath);
-        stage2DestroySecondary = stage2DestroySecondary != null ? stage2DestroySecondary : LoadClip(Stage2DestroyPath2);
-        stage2Explosion = stage2Explosion != null ? stage2Explosion : LoadClip(Stage2ExplosionPath);
-        stage3RockRise = stage3RockRise != null ? stage3RockRise : LoadClip(Stage3RockRisePath);
-        stage3StoneFall = stage3StoneFall != null ? stage3StoneFall : LoadClip(Stage3StoneFallPath);
+        stage1Ambient = LoadClip(Stage1AmbientPath);
+        stage2Ambient = LoadClip(Stage2AmbientPath);
+        stage3Ambient = LoadClip(Stage3AmbientPath);
+        commonSuccess = LoadClip(CommonSuccessPath);
+        stage1SoilMove = LoadClip(Stage1SoilMovePath);
 
-        if (stage2WaterDrops == null || stage2WaterDrops.Length == 0)
+        stage1ExtraAmbients = new[]
         {
-            stage2WaterDrops = new[]
-            {
-                LoadClip(Stage2WaterDrop1Path),
-                LoadClip(Stage2WaterDrop2Path),
-                LoadClip(Stage2WaterDrop3Path),
-                LoadClip(Stage2WaterDrop4Path)
-            };
-        }
+            LoadClip(Stage1AmbientForestBasePath),
+            LoadClip(Stage1AmbientKotoriPath),
+            LoadClip(Stage1AmbientRiverPath),
+            LoadClip(Stage1AmbientSuzumushiPath),
+            LoadClip(Stage1AmbientWindPath)
+        };
 
-        if (stage3GlowClips == null || stage3GlowClips.Length == 0)
+        stage2ExtraAmbients = new[]
         {
-            stage3GlowClips = new[]
-            {
-                LoadClip(Stage3Glow1Path),
-                LoadClip(Stage3Glow2Path),
-                LoadClip(Stage3Glow3Path)
-            };
-        }
+            LoadClip(Stage2AmbientCavePath)
+        };
+
+        stage1AnimalMoves = new[]
+        {
+            LoadClip(Stage1AnimalMovePath),
+            LoadClip(Stage1AnimalMoveExtraPath)
+        };
+
+        stage1LeafMoves = new[]
+        {
+            LoadClip(Stage1LeafMovePath),
+            LoadClip(Stage1LeafMoveExtraPath)
+        };
+        
+        stage2Destroy = LoadClip(Stage2DestroyPath);
+        stage2DestroySecondary = LoadClip(Stage2DestroyPath2);
+        stage2Explosion = LoadClip(Stage2ExplosionPath);
+        stage3RockRise = LoadClip(Stage3RockRisePath);
+        stage3StoneFall = LoadClip(Stage3StoneFallPath);
+
+        stage2WaterDrops = new[]
+        {
+            LoadClip(Stage2WaterDrop1Path),
+            LoadClip(Stage2WaterDrop2Path),
+            LoadClip(Stage2WaterDrop3Path),
+            LoadClip(Stage2WaterDrop4Path)
+        };
+
+        stage3GlowClips = new[]
+        {
+            LoadClip(Stage3Glow1Path),
+            LoadClip(Stage3Glow2Path),
+            LoadClip(Stage3Glow3Path)
+        };
+        
+        UnityEditor.EditorUtility.SetDirty(this);
     }
 
     private static AudioClip LoadClip(string assetPath)
     {
-        return AssetDatabase.LoadAssetAtPath<AudioClip>(assetPath);
+        return UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>(assetPath);
     }
 #endif
 }

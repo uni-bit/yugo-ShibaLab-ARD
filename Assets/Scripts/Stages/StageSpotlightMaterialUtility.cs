@@ -32,7 +32,12 @@ public static class StageSpotlightMaterialUtility
         material.SetColor("_HiddenColor", hiddenColor);
         material.SetColor("_LitColor", litColor);
         renderer.sharedMaterial = material;
-        renderer.enabled = true;
+        ClearPropertyBlock(renderer);
+        // Do NOT force enable the primary text renderer if it is part of a digit animator.
+        if (textMesh.GetComponent<StageLightCodeDigitAnimator>() == null)
+        {
+            renderer.enabled = true;
+        }
 
         RemoveLegacyFeedback(textMesh.gameObject);
     }
@@ -53,6 +58,7 @@ public static class StageSpotlightMaterialUtility
         material.SetColor("_HiddenColor", hiddenColor);
         material.SetColor("_LitColor", litColor);
         lineRenderer.sharedMaterial = material;
+        ClearPropertyBlock(lineRenderer);
         lineRenderer.enabled = true;
 
         RemoveLegacyFeedback(lineRenderer.gameObject);
@@ -74,9 +80,20 @@ public static class StageSpotlightMaterialUtility
         material.SetColor("_HiddenColor", hiddenColor);
         material.SetColor("_LitColor", litColor);
         renderer.sharedMaterial = material;
+        ClearPropertyBlock(renderer);
         renderer.enabled = true;
 
         RemoveLegacyFeedback(renderer.gameObject);
+    }
+
+    public static void ClearPropertyBlock(Renderer renderer)
+    {
+        if (renderer == null)
+        {
+            return;
+        }
+
+        renderer.SetPropertyBlock(null);
     }
 
     private static Material EnsureMaterial(Renderer renderer, Texture mainTexture)

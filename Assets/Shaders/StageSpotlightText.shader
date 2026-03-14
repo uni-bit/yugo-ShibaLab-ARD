@@ -40,6 +40,7 @@ Shader "ShibaLab/Stage Spotlight Text"
             {
                 float4 positionOS : POSITION;
                 float2 uv : TEXCOORD0;
+                float4 color : COLOR;
             };
 
             struct Varyings
@@ -47,6 +48,7 @@ Shader "ShibaLab/Stage Spotlight Text"
                 float4 positionHCS : SV_POSITION;
                 float2 uv : TEXCOORD0;
                 float3 positionWS : TEXCOORD1;
+                float4 color : COLOR;
             };
 
             Varyings vert(Attributes input)
@@ -56,6 +58,7 @@ Shader "ShibaLab/Stage Spotlight Text"
                 output.positionHCS = positionInputs.positionCS;
                 output.positionWS = positionInputs.positionWS;
                 output.uv = TRANSFORM_TEX(input.uv, _MainTex);
+                output.color = input.color;
                 return output;
             }
 

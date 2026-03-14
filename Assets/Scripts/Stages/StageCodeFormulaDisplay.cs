@@ -5,7 +5,7 @@ using UnityEngine;
 public class StageCodeFormulaDisplay : MonoBehaviour
 {
     [SerializeField] private TextMesh colorSourceText;
-    [SerializeField] private float strokeWidth = 0.045f;
+    [SerializeField] private float strokeWidth = 0.025f;
     [SerializeField] private float layoutOffsetX = -0.3f;
     [SerializeField] private float symbolScale = 1.3f;
     [SerializeField] private Color fallbackColor = Color.white;
@@ -120,8 +120,8 @@ public class StageCodeFormulaDisplay : MonoBehaviour
 
         // spacing を 0.60f に縮めて 〇△□ を詰める。
         // = は symbols の直後に配置し、= と ??? の重なりを解消するため questionX に 1.10f のオフセットを確保する。
-        float spacing = 0.60f;
-        float startX = -1.5f;
+        float spacing = 0.80f;
+        float startX = -2f;
         float equalsX = startX + (spacing * 3f) + 0.05f;   // symbols 直後 = 0.35f (layoutOffset 後: 0.05f)
         float questionX = equalsX + 1.10f;                  // = から十分離す = 1.45f (layoutOffset 後: 1.15f)
         ConfigureCircle(circleRenderer, new Vector3(startX + (spacing * 0f), 0f, 0f));
@@ -130,7 +130,7 @@ public class StageCodeFormulaDisplay : MonoBehaviour
         ConfigureFormulaText(equalsText, "=", ApplyLayoutOffset(new Vector3(equalsX, 0f, 0f)), 0.09f, 100);
         ConfigureFormulaText(questionText, "???", ApplyLayoutOffset(new Vector3(questionX, 0f, 0f)), 0.09f, 100);
         ConfigureFrame(frameRenderer, ApplyLayoutOffset(new Vector3(0f, 0f, 0f)), new Vector2(5.4f, 1.45f), 0.04f);
- 
+  
         layoutInitialized = true;
 
     }
@@ -262,12 +262,11 @@ public class StageCodeFormulaDisplay : MonoBehaviour
         }
 
         renderer.transform.localPosition = ApplyLayoutOffset(localPosition);
-        renderer.loop = false;
-        renderer.positionCount = 4;
+        renderer.loop = true;
+        renderer.positionCount = 3;
         renderer.SetPosition(0, new Vector3(0f, 0.3f, 0f) * symbolScale);
         renderer.SetPosition(1, new Vector3(-0.28f, -0.22f, 0f) * symbolScale);
         renderer.SetPosition(2, new Vector3(0.28f, -0.22f, 0f) * symbolScale);
-        renderer.SetPosition(3, new Vector3(0f, 0.3f, 0f) * symbolScale);
     }
 
     private void ConfigureSquare(LineRenderer renderer, Vector3 localPosition)
@@ -278,13 +277,12 @@ public class StageCodeFormulaDisplay : MonoBehaviour
         }
 
         renderer.transform.localPosition = ApplyLayoutOffset(localPosition);
-        renderer.loop = false;
-        renderer.positionCount = 5;
+        renderer.loop = true;
+        renderer.positionCount = 4;
         renderer.SetPosition(0, new Vector3(-0.24f, 0.24f, 0f) * symbolScale);
         renderer.SetPosition(1, new Vector3(-0.24f, -0.24f, 0f) * symbolScale);
         renderer.SetPosition(2, new Vector3(0.24f, -0.24f, 0f) * symbolScale);
         renderer.SetPosition(3, new Vector3(0.24f, 0.24f, 0f) * symbolScale);
-        renderer.SetPosition(4, new Vector3(-0.24f, 0.24f, 0f) * symbolScale);
     }
 
     private static void ConfigureFrame(LineRenderer renderer, Vector3 centerPosition, Vector2 size, float width)

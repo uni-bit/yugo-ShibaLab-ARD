@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 [ExecuteAlways]
@@ -10,20 +11,15 @@ public class StageLightCodeDigitAnimator : MonoBehaviour
     [SerializeField] private AnimationCurve travelCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
 
     [Header("Layout")]
-    [SerializeField] private float digitSpacing = 0.52f;
+    [SerializeField] private float digitSpacing = 1.3f;
+    [SerializeField] private float radiusMultiplier = 1.2f;
 
-    [Header("Opacity")]
-    [SerializeField, Range(0f, 1f)] private float previousDigitStartOpacity = 1f;
-    [SerializeField, Range(0f, 1f)] private float previousDigitEndOpacity = 0f;
-    [SerializeField, Range(0f, 1f)] private float currentDigitStartOpacity = 0f;
-    [SerializeField, Range(0f, 1f)] private float currentDigitEndOpacity = 1f;
+    private readonly TextMesh[] wheelTexts = new TextMesh[10];
 
-    private const string SecondaryName = "Next Digit";
-
-    private TextMesh secondaryText;
     private int displayedDigit;
-    private int targetDigit;
-    private int animationDirection;
+    private float currentScroll; 
+    private float targetScroll;
+    private float startScroll;
     private float animationTime;
     private bool isAnimating;
     private Color baseTextColor = Color.white;
@@ -49,15 +45,10 @@ public class StageLightCodeDigitAnimator : MonoBehaviour
     private void OnValidate()
     {
         EnsureTexts();
-
-        if (isAnimating)
+        if (!isAnimating)
         {
-            float normalized = animationDuration <= 0.0001f ? 1f : Mathf.Clamp01(animationTime / animationDuration);
-            ApplyAnimationFrame(normalized);
-            return;
+            SetDigitImmediate(displayedDigit);
         }
-
-        SetDigitImmediate(displayedDigit);
     }
 
     private void Update()
@@ -69,45 +60,44 @@ public class StageLightCodeDigitAnimator : MonoBehaviour
 
         animationTime += Time.deltaTime;
         float normalized = Mathf.Clamp01(animationDuration <= 0.0001f ? 1f : animationTime / animationDuration);
-        ApplyAnimationFrame(normalized);
+        float eased = EvaluateTravel(normalized);
 
-        if (normalized < 1f)
+        currentScroll = Mathf.Lerp(startScroll, targetScroll, eased);
+        ApplyDialState(currentScroll);
+
+        if (normalized >= 1f)
         {
-            return;
+            isAnimating = false;
+            displayedDigit = ((Mathf.RoundToInt(targetScroll) % 10) + 10) % 10;
+            currentScroll = displayedDigit; 
+            targetScroll = currentScroll;
+            ApplyDialState(currentScroll);
         }
-
-        displayedDigit = targetDigit;
-        isAnimating = false;
-        SetDigitImmediate(displayedDigit);
     }
 
     public void SetDigitImmediate(int digit)
     {
         displayedDigit = ((digit % 10) + 10) % 10;
-        targetDigit = displayedDigit;
+        currentScroll = displayedDigit;
+        targetScroll = currentScroll;
         isAnimating = false;
         animationTime = 0f;
         EnsureTexts();
         CacheBaseColor();
+        ApplyDialState(currentScroll);
 
         if (primaryText != null)
         {
-            primaryText.text = displayedDigit.ToString();
-            primaryText.transform.localPosition = Vector3.zero;
-            primaryText.color = baseTextColor;
-        }
-
-        if (secondaryText != null)
-        {
-            secondaryText.text = displayedDigit.ToString();
-            secondaryText.transform.localPosition = new Vector3(0f, -GetDigitSpacing(), 0f);
-            secondaryText.color = new Color(baseTextColor.r, baseTextColor.g, baseTextColor.b, 0f);
-            secondaryText.gameObject.SetActive(false);
+            MeshRenderer r = primaryText.GetComponent<MeshRenderer>();
+            if (r != null) r.enabled = false;
         }
     }
 
     public void AnimateToDigit(int digit, int direction)
     {
+        EnsureTexts();
+        CacheBaseColor();
+
         int normalizedDigit = ((digit % 10) + 10) % 10;
         if (normalizedDigit == displayedDigit && !isAnimating)
         {
@@ -115,31 +105,98 @@ public class StageLightCodeDigitAnimator : MonoBehaviour
             return;
         }
 
-        EnsureTexts();
-        CacheBaseColor();
-        targetDigit = normalizedDigit;
+        startScroll = currentScroll;
+        float currentMod = currentScroll % 10f;
+        if (currentMod < 0)
+        {
+            currentMod += 10f;
+        }
+
+        float diff = normalizedDigit - currentMod;
+        
+        if (direction > 0 && diff <= 0f)
+        {
+            diff += 10f;
+        }
+        if (direction < 0 && diff >= 0f)
+        {
+            diff -= 10f;
+        }
+
+        targetScroll = startScroll + diff;
         animationDirection = direction >= 0 ? 1 : -1;
         animationTime = 0f;
         isAnimating = true;
 
         if (primaryText != null)
         {
-            primaryText.text = displayedDigit.ToString();
+            MeshRenderer r = primaryText.GetComponent<MeshRenderer>();
+            if (r != null) r.enabled = false;
         }
-
-        if (secondaryText != null)
-        {
-            secondaryText.text = targetDigit.ToString();
-            secondaryText.gameObject.SetActive(true);
-        }
-
-        ApplyAnimationFrame(0f);
     }
+
+    private void ApplyDialState(float scrollValue)
+    {
+        float circumference = Mathf.Max(0.0001f, digitSpacing) * 10f;
+        float radius = (circumference / (2f * Mathf.PI)) * radiusMultiplier;
+
+        float wheelAngle = scrollValue * -36f;
+
+        for (int i = 0; i < 10; i++)
+        {
+            TextMesh tm = wheelTexts[i];
+            if (tm == null)
+            {
+                continue;
+            }
+
+            float digitAngle = wheelAngle + (i * 36f);
+            
+            // Normalize angle to -180 ~ 180 to ensure precise alpha logic
+            while (digitAngle > 180f) digitAngle -= 360f;
+            while (digitAngle < -180f) digitAngle += 360f;
+
+            float rad = digitAngle * Mathf.Deg2Rad;
+
+            // 完全に平面（Z=0）でY軸のみ移動させる
+            float yOffset = Mathf.Sin(rad) * radius * 1.5f; // 離すための調整
+            
+            // localPositionにYオフセットを適用
+            Vector3 newPos = Vector3.zero;
+            newPos.y = yOffset;
+            tm.transform.localPosition = newPos;
+
+            // 回転やスケールは一切いじらない
+            tm.transform.localRotation = Quaternion.identity;
+            
+            Vector3 baseScale = primaryText != null ? primaryText.transform.localScale : Vector3.one;
+            tm.transform.localScale = baseScale * 0.5f;
+
+            // 角度（離れ具合）に応じてアルファを調整（正面に近いほど濃い）
+            float cosStr = Mathf.Cos(rad);
+            float alpha = Mathf.InverseLerp(0.8f, 1.0f, cosStr); 
+
+            Color c = baseTextColor;
+            c.a = Mathf.Max(baseTextColor.a, 1f) * alpha; // 透明度で表示/非表示をコントロール
+            tm.color = c;
+            
+            tm.gameObject.SetActive(alpha > 0.01f);
+        }
+        
+        if (primaryText != null)
+        {
+            MeshRenderer r = primaryText.GetComponent<MeshRenderer>();
+            if (r != null) r.enabled = false;
+        }
+    }
+
+    private int animationDirection = 1;
 
     public void RefreshVisualStyle()
     {
         EnsureTexts();
         CopyPrimaryStyle();
+        ApplyDialState(currentScroll);
     }
 
     private void EnsureTexts()
@@ -148,18 +205,33 @@ public class StageLightCodeDigitAnimator : MonoBehaviour
         {
             primaryText = GetComponent<TextMesh>();
         }
-
-        Transform secondaryTransform = transform.Find(SecondaryName);
-        if (secondaryTransform == null)
+        
+        // Force the primary text to be empty so it never renders under any circumstance
+        if (primaryText != null)
         {
-            secondaryTransform = new GameObject(SecondaryName).transform;
-            secondaryTransform.SetParent(transform, false);
+            primaryText.text = "";
+            MeshRenderer r = primaryText.GetComponent<MeshRenderer>();
+            if (r != null) r.enabled = false;
         }
 
-        secondaryText = secondaryTransform.GetComponent<TextMesh>();
-        if (secondaryText == null)
+        for (int i = 0; i < 10; i++)
         {
-            secondaryText = secondaryTransform.gameObject.AddComponent<TextMesh>();
+            string digitName = "WheelDigit_" + i;
+            Transform child = transform.Find(digitName);
+            if (child == null)
+            {
+                child = new GameObject(digitName).transform;
+                child.SetParent(transform, false);
+            }
+
+            TextMesh tm = child.GetComponent<TextMesh>();
+            if (tm == null)
+            {
+                tm = child.gameObject.AddComponent<TextMesh>();
+            }
+
+            tm.text = i.ToString();
+            wheelTexts[i] = tm;
         }
 
         CopyPrimaryStyle();
@@ -167,72 +239,57 @@ public class StageLightCodeDigitAnimator : MonoBehaviour
 
     private void CopyPrimaryStyle()
     {
-        if (primaryText == null || secondaryText == null)
+        if (primaryText == null)
         {
             return;
         }
 
-        secondaryText.font = primaryText.font;
-        secondaryText.fontSize = primaryText.fontSize;
-        secondaryText.characterSize = primaryText.characterSize;
-        secondaryText.anchor = primaryText.anchor;
-        secondaryText.alignment = primaryText.alignment;
-        secondaryText.richText = primaryText.richText;
-        secondaryText.color = primaryText.color;
-
-        MeshRenderer secondaryRenderer = secondaryText.GetComponent<MeshRenderer>();
         MeshRenderer primaryRenderer = primaryText.GetComponent<MeshRenderer>();
-        if (secondaryRenderer != null)
+        if (primaryRenderer != null)
         {
-            secondaryRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            secondaryRenderer.receiveShadows = false;
-            if (primaryRenderer != null && primaryRenderer.sharedMaterial != null)
+            StageSpotlightMaterialUtility.ClearPropertyBlock(primaryRenderer);
+        }
+
+        for (int i = 0; i < 10; i++)
+        {
+            TextMesh tm = wheelTexts[i];
+            if (tm == null || tm == primaryText)
             {
-                secondaryRenderer.sharedMaterial = primaryRenderer.sharedMaterial;
+                continue;
+            }
+
+            tm.font = primaryText.font;
+            tm.fontSize = primaryText.fontSize;
+            tm.characterSize = primaryText.characterSize;
+            tm.anchor = primaryText.anchor;
+            tm.alignment = primaryText.alignment;
+            tm.richText = primaryText.richText;
+            
+            // 修正: 優先テキストの1/2のスケールを適用
+            tm.transform.localScale = primaryText.transform.localScale * 0.5f;
+
+            MeshRenderer secR = tm.GetComponent<MeshRenderer>();
+            if (secR != null)
+            {
+                secR.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                secR.receiveShadows = false;
+                StageSpotlightMaterialUtility.ClearPropertyBlock(secR);
+                if (primaryRenderer != null && primaryRenderer.sharedMaterial != null)
+                {
+                    secR.sharedMaterial = primaryRenderer.sharedMaterial;
+                }
             }
         }
 
         CacheBaseColor();
     }
 
-    private void ApplyAnimationFrame(float normalized)
-    {
-        EnsureTexts();
-        if (primaryText == null || secondaryText == null)
-        {
-            return;
-        }
-
-        float eased = EvaluateTravel(normalized);
-        float spacing = GetDigitSpacing();
-        float outgoingY = spacing * eased * animationDirection;
-        float incomingY = outgoingY - (spacing * animationDirection);
-
-        primaryText.transform.localPosition = new Vector3(0f, outgoingY, 0f);
-        secondaryText.transform.localPosition = new Vector3(0f, incomingY, 0f);
-
-        Color outgoingColor = baseTextColor;
-        outgoingColor.a = baseTextColor.a * Mathf.Lerp(previousDigitStartOpacity, previousDigitEndOpacity, eased);
-        Color incomingColor = baseTextColor;
-        incomingColor.a = baseTextColor.a * Mathf.Lerp(currentDigitStartOpacity, currentDigitEndOpacity, eased);
-        primaryText.color = outgoingColor;
-        secondaryText.color = incomingColor;
-
-        if (normalized >= 1f)
-        {
-            secondaryText.gameObject.SetActive(false);
-        }
-    }
-
     private void CacheBaseColor()
     {
         if (primaryText != null)
         {
-            Color candidate = primaryText.color;
-            if (candidate.a > 0.0001f || baseTextColor.a <= 0.0001f)
-            {
-                baseTextColor = candidate;
-            }
+            // Always trust the primaryText color, ensuring HDR / glow is respected correctly during resets and successes.
+            baseTextColor = primaryText.color;
         }
     }
 
@@ -245,10 +302,5 @@ public class StageLightCodeDigitAnimator : MonoBehaviour
         }
 
         return Mathf.Clamp01(travelCurve.Evaluate(clamped));
-    }
-
-    private float GetDigitSpacing()
-    {
-        return Mathf.Max(0.0001f, digitSpacing);
     }
 }

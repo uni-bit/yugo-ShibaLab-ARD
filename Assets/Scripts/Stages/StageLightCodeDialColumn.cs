@@ -83,15 +83,29 @@ public class StageLightCodeDialColumn : MonoBehaviour
     {
         SetInputLocked(true);
 
+        Color emissionColor = new Color(
+            solvedDigitColor.r * 2.5f,
+            solvedDigitColor.g * 2.5f,
+            solvedDigitColor.b * 2.5f,
+            solvedDigitColor.a
+        );
+
         if (digitText != null)
         {
-            digitText.color = solvedDigitColor;
-            StageSpotlightMaterialUtility.ApplySpotlitText(digitText, solvedDigitColor, solvedDigitColor);
+            // 強制的にHDRカラー（2.5倍のEmission色）を本体の頂点カラーにも設定し、子テキスト全てに伝搬させる
+            digitText.color = emissionColor;
+            StageSpotlightMaterialUtility.ApplySpotlitText(digitText, emissionColor, emissionColor);
         }
 
         if (digitAnimator != null)
         {
             digitAnimator.RefreshVisualStyle();
+        }
+
+        if (digitAnimator != null && digitText != null)
+        {
+            MeshRenderer r = digitText.GetComponent<MeshRenderer>();
+            if (r != null) r.enabled = false;
         }
 
         if (incrementIndicator != null)
@@ -110,7 +124,6 @@ public class StageLightCodeDialColumn : MonoBehaviour
         inputLocked = false;
         incrementTimer = 0f;
         decrementTimer = 0f;
-        SetDigit(startingDigit);
 
         if (digitText != null)
         {
@@ -118,10 +131,18 @@ public class StageLightCodeDialColumn : MonoBehaviour
             StageSpotlightMaterialUtility.ApplySpotlitText(digitText, new Color(1f, 1f, 1f, 0f), Color.white);
         }
 
+        SetDigit(startingDigit);
+
         if (digitAnimator != null)
         {
             digitAnimator.SetDigitImmediate(CurrentDigit);
             digitAnimator.RefreshVisualStyle();
+        }
+
+        if (digitAnimator != null && digitText != null)
+        {
+            MeshRenderer r = digitText.GetComponent<MeshRenderer>();
+            if (r != null) r.enabled = false;
         }
 
         if (incrementIndicator != null)
@@ -197,9 +218,17 @@ public class StageLightCodeDialColumn : MonoBehaviour
             }
         }
 
-        if (digitText != null && (!hasAnimator || direction == 0))
+        if (digitText != null)
         {
-            digitText.text = CurrentDigit.ToString();
+            if (hasAnimator)
+            {
+                // アニメーターがある場合、元の巨大なテキストは常に空にして絶対に表示させない
+                digitText.text = "";
+            }
+            else
+            {
+                digitText.text = CurrentDigit.ToString();
+            }
         }
     }
 

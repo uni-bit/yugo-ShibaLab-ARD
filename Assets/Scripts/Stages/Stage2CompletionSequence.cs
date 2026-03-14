@@ -109,6 +109,7 @@ public class Stage2CompletionSequence : MonoBehaviour, IStageActivationHandler
     private bool hasInitialStageRootTransform;
 
     public bool IsPlaying => currentPhase != SequencePhase.Waiting && currentPhase != SequencePhase.Complete;
+    public bool IsCollapsing => currentPhase == SequencePhase.Collapsing;
     public bool IsComplete => currentPhase == SequencePhase.Complete;
 
     private void Awake()

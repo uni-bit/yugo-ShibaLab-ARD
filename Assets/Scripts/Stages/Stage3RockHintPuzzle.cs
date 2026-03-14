@@ -144,6 +144,7 @@ public class Stage3RockHintPuzzle : MonoBehaviour
     private readonly System.Collections.Generic.Dictionary<Transform, RockVisualCache> rockVisualCaches = new System.Collections.Generic.Dictionary<Transform, RockVisualCache>();
 
     public bool IsComplete => finalePhase == FinalePhase.Complete;
+    public bool IsFinaleStarted => finalePhase != FinalePhase.None;
     public bool GreenActivated => greenActivated;
     public bool BlueActivated => blueActivated;
 
@@ -597,22 +598,28 @@ public class Stage3RockHintPuzzle : MonoBehaviour
 
     private bool IsObstacleTransform(Transform target)
     {
-        if (target == null || obstacleRocks == null)
+        if (target == null)
         {
             return false;
         }
 
-        for (int index = 0; index < obstacleRocks.Length; index++)
+        if (obstacleRocks != null)
         {
-            Transform obstacle = obstacleRocks[index];
-            if (obstacle == null)
+            for (int index = 0; index < obstacleRocks.Length; index++)
             {
-                continue;
+                Transform obstacle = obstacleRocks[index];
+                if (obstacle == null) continue;
+                if (target == obstacle || target.IsChildOf(obstacle)) return true;
             }
+        }
 
-            if (target == obstacle || target.IsChildOf(obstacle))
+        if (loopingLiftTargets != null)
+        {
+            for (int index = 0; index < loopingLiftTargets.Length; index++)
             {
-                return true;
+                Transform lift = loopingLiftTargets[index];
+                if (lift == null) continue;
+                if (target == lift || target.IsChildOf(lift)) return true;
             }
         }
 
@@ -657,7 +664,7 @@ public class Stage3RockHintPuzzle : MonoBehaviour
     }
 
     /// <summary>
-    /// 障害物岩に非トリガーのコライダーがない場合は BoxCollider を自動追加する。
+    /// 障害物岩に非トリガーのコライダーがない場合は、描画メッシュに合わせてコライダーを付与する。
     /// SpotlightSensor の LineOfSight レイキャストが障害物岩で正しくブロックされるために必要。
     /// </summary>
     private void EnsureObstacleColliders()
@@ -688,8 +695,33 @@ public class Stage3RockHintPuzzle : MonoBehaviour
 
             if (!hasNonTrigger)
             {
-                BoxCollider added = rock.gameObject.AddComponent<BoxCollider>();
-                added.isTrigger = false;
+                Renderer[] childRenderers = rock.GetComponentsInChildren<Renderer>(true);
+                if (childRenderers.Length > 0)
+                {
+                    foreach (var cr in childRenderers)
+                    {
+                        if (cr.name == EmissiveShellName) continue;
+                        if (cr.GetComponent<Collider>() != null) continue;
+                        
+                        MeshFilter mf = cr.GetComponent<MeshFilter>();
+                        if (mf != null && mf.sharedMesh != null)
+                        {
+                            MeshCollider mc = cr.gameObject.AddComponent<MeshCollider>();
+                            mc.convex = true;
+                            mc.isTrigger = false;
+                        }
+                        else
+                        {
+                            BoxCollider box = cr.gameObject.AddComponent<BoxCollider>();
+                            box.isTrigger = false;
+                        }
+                    }
+                }
+                else
+                {
+                    BoxCollider box = rock.gameObject.AddComponent<BoxCollider>();
+                    box.isTrigger = false;
+                }
             }
         }
     }

@@ -19,20 +19,17 @@ public class Stage2PuzzleController : MonoBehaviour, IStageActivationHandler
     [Tooltip("有効化時にアンビエントライトを暗くする（ステージ4からのループ復帰で環境を初期化するため）")]
     [SerializeField] private bool resetAmbientOnEnable = true;
     [SerializeField] private Color stage2AmbientColor = new Color(0.04f, 0.04f, 0.05f, 1f);
-    [SerializeField] private bool resetCalibrationOnStageActivated = true;
 
     private Stage2State currentState;
-    private PoseCalibrationCoordinator calibrationCoordinator;
-    private StageSequenceController sequenceController;
 
     private void OnEnable()
     {
-        ResetStageRuntime(false);
+        ResetStageRuntime();
     }
 
     public void OnStageActivated()
     {
-        ResetStageRuntime(true);
+        ResetStageRuntime();
     }
 
     private void Update()
@@ -87,11 +84,10 @@ public class Stage2PuzzleController : MonoBehaviour, IStageActivationHandler
         currentState = Stage2State.Waiting;
     }
 
-    private void ResetStageRuntime(bool resetCalibration)
+    private void ResetStageRuntime()
     {
         currentState = Stage2State.Waiting;
         ApplyInitialStageLighting();
-        ResolveSequenceController();
 
         if (revealPuzzle != null)
         {
@@ -107,11 +103,6 @@ public class Stage2PuzzleController : MonoBehaviour, IStageActivationHandler
         {
             completionSequence.ResetRuntimeState();
         }
-
-        if (resetCalibration)
-        {
-            ResetStageCalibration();
-        }
     }
 
     private void ApplyInitialStageLighting()
@@ -119,38 +110,6 @@ public class Stage2PuzzleController : MonoBehaviour, IStageActivationHandler
         if (Application.isPlaying && resetAmbientOnEnable)
         {
             RenderSettings.ambientLight = stage2AmbientColor;
-        }
-    }
-
-    private void ResetStageCalibration()
-    {
-        if (!Application.isPlaying || !resetCalibrationOnStageActivated)
-        {
-            return;
-        }
-
-        ResolveSequenceController();
-        if (sequenceController != null && sequenceController.PreviousStageIndex == 3)
-        {
-            return;
-        }
-
-        if (calibrationCoordinator == null)
-        {
-            calibrationCoordinator = FindFirstObjectByType<PoseCalibrationCoordinator>();
-        }
-
-        if (calibrationCoordinator != null)
-        {
-            calibrationCoordinator.ResetAllCalibration();
-        }
-    }
-
-    private void ResolveSequenceController()
-    {
-        if (sequenceController == null)
-        {
-            sequenceController = FindFirstObjectByType<StageSequenceController>();
         }
     }
 }

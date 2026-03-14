@@ -28,10 +28,23 @@ public class TestScreenVisualizer : MonoBehaviour
     [SerializeField] private Light sourceLight;
     [SerializeField] private ProjectionSurface frontSurface;
     [SerializeField] private ProjectionSurface leftSurface;
+
+    [Header("Standing Position Simulation")]
+    [Tooltip("立ち位置の自動補正の有効無効")]
+    [SerializeField] private bool simulateStandingPosition = true;
+    [Tooltip("スクリーンの横幅を1としたときの、プレイヤーの立ち位置の距離比率。例: 4/5=0.8。")]
+    [SerializeField] private float standingDistanceRatio = 0.8f;
+    [Tooltip("自動計算された立ち位置からの微調整オフセット（X:右, Y:上, Z:前）")]
+    [SerializeField] private Vector3 simulatedOriginOffset = Vector3.zero;
+
+    [Header("Fallback Configurations")]
     [SerializeField] private Vector2Int referenceResolution = new Vector2Int(1920, 1080);
+    [Tooltip("仮想スクリーンへの距離(Front/Leftが無い場合のフォールバック用)")]
     [SerializeField] private float screenDistance = 3f;
     [SerializeField] private float screenHeightWorld = 3f;
     [SerializeField] private float leftScreenWidthMultiplier = 1f;
+
+    [Header("Smoothing")]
     [SerializeField] private float targetPointSmoothing = 0f;
     [SerializeField] private float surfaceSwitchHysteresis = 0.18f;
     [SerializeField] private bool autoCalibrateOnFirstPacket = true;
@@ -217,7 +230,9 @@ public class TestScreenVisualizer : MonoBehaviour
         }
 
         Transform pointerTransform = sourceLight.transform.parent;
-        Vector3 rayOrigin = pointerTransform != null ? pointerTransform.position : transform.position;
+        Vector3 baseRayOrigin = pointerTransform != null ? pointerTransform.position : transform.position;
+        Vector3 rayOrigin = GetCalculatedStandingPosition(baseRayOrigin);
+
         Vector3 rayDirection = pointerTransform != null
             ? GetRayDirection(pointerTransform)
             : sourceLight.transform.forward;
@@ -249,6 +264,9 @@ public class TestScreenVisualizer : MonoBehaviour
         CurrentSurfaceName = surface.ToString();
         lastSurface = surface;
         Vector3 targetDirection = CurrentTargetPoint - sourceLight.transform.position;
+        
+        // エディタのSceneビューでレイが見えるように可視化線を描画
+        Debug.DrawLine(rayOrigin, CurrentTargetPoint, Color.red);
 
         if (targetDirection.sqrMagnitude <= 0.000001f)
         {
@@ -276,9 +294,8 @@ public class TestScreenVisualizer : MonoBehaviour
         normalizedX = (normalizedX * clampedScale.x) + screenAimOffsetNormalized.x;
         normalizedY = (normalizedY * clampedScale.y) + screenAimOffsetNormalized.y;
 
-        normalizedX = Mathf.Clamp(normalizedX, -0.5f, 0.5f);
-        normalizedY = Mathf.Clamp(normalizedY, -0.5f, 0.5f);
-
+        // クランプ処理を完全に削除（画面外へそのままプロジェクションさせる）
+        
         local.x = normalizedX * surface.Width;
         local.y = normalizedY * surface.Height;
         local.z = 0f;
@@ -318,96 +335,13 @@ public class TestScreenVisualizer : MonoBehaviour
 
     private void ResolveTargetPoint(Vector3 rayOrigin, Vector3 rayDirection, out ProjectionTargetSurface surface, out Vector3 worldTargetPoint)
     {
-        bool hasFrontCandidate = TryGetClosestPointOnSurfaceForRay(
-            rayOrigin,
-            rayDirection,
-            frontSurface,
-            out Vector3 frontPoint,
-            out float frontScore);
-
-        bool hasLeftCandidate = TryGetClosestPointOnSurfaceForRay(
-            rayOrigin,
-            rayDirection,
-            leftSurface,
-            out Vector3 leftPoint,
-            out float leftScore);
-
-        if (hasFrontCandidate && (!hasLeftCandidate || frontScore <= leftScore))
-        {
-            surface = ProjectionTargetSurface.Front;
-            worldTargetPoint = frontPoint;
-            return;
-        }
-
-        if (hasLeftCandidate)
-        {
-            surface = ProjectionTargetSurface.Left;
-            worldTargetPoint = leftPoint;
-            return;
-        }
-
+        // クランプや内側判定（スコア計算）を完全に削除。
+        // 純粋にレイが向いている方向（XマイナスならLeft面、プラスならFront面）だけで平面を決定し、無限平面として交差させる。
+        // これにより、境界での振動（フィードバックループ）や画面内への強制押し戻しが完全に解消されます。
         surface = rayDirection.x < 0f ? ProjectionTargetSurface.Left : ProjectionTargetSurface.Front;
         worldTargetPoint = surface == ProjectionTargetSurface.Left
-            ? GetFallbackSurfacePoint(leftSurface, rayDirection)
-            : GetFallbackSurfacePoint(frontSurface, rayDirection);
-    }
-
-    private bool TryGetClosestPointOnSurfaceForRay(
-        Vector3 rayOrigin,
-        Vector3 rayDirection,
-        ProjectionSurface surface,
-        out Vector3 closestPoint,
-        out float score)
-    {
-        closestPoint = Vector3.zero;
-        score = float.PositiveInfinity;
-
-        if (surface == null)
-        {
-            return false;
-        }
-
-        bool hasPlaneHit = TryIntersectSurface(rayOrigin, rayDirection, surface, out Vector3 surfacePoint, out _, out bool isInsideSurface);
-        closestPoint = hasPlaneHit ? surfacePoint : GetFallbackSurfacePoint(surface, rayDirection);
-
-        Vector3 normalizedDirection = rayDirection.normalized;
-        Vector3 toPoint = closestPoint - rayOrigin;
-        float alongRay = Vector3.Dot(toPoint, normalizedDirection);
-        Vector3 closestPointOnRay = rayOrigin + normalizedDirection * Mathf.Max(0f, alongRay);
-        float perpendicularDistanceSqr = (closestPoint - closestPointOnRay).sqrMagnitude;
-        float behindPenalty = alongRay < 0f ? (100f + (-alongRay * 10f)) : 0f;
-        float outsidePenalty = hasPlaneHit && !isInsideSurface ? 0.01f : 0f;
-
-        score = perpendicularDistanceSqr + behindPenalty + outsidePenalty;
-        return true;
-    }
-
-    private static bool TryIntersectSurface(Vector3 rayOrigin, Vector3 rayDirection, ProjectionSurface surface, out Vector3 hitPoint, out float hitDistance, out bool isInsideSurface)
-    {
-        hitPoint = Vector3.zero;
-        hitDistance = float.PositiveInfinity;
-        isInsideSurface = false;
-
-        if (surface == null)
-        {
-            return false;
-        }
-
-        Plane plane = new Plane(surface.transform.forward, surface.transform.position);
-        Ray ray = new Ray(rayOrigin, rayDirection);
-        if (!plane.Raycast(ray, out hitDistance) || hitDistance <= 0f)
-        {
-            return false;
-        }
-
-        Vector3 planeHit = ray.GetPoint(hitDistance);
-        Vector3 local = surface.transform.InverseTransformPoint(planeHit);
-        float halfWidth = surface.Width * 0.5f;
-        float halfHeight = surface.Height * 0.5f;
-        isInsideSurface = Mathf.Abs(local.x) <= halfWidth && Mathf.Abs(local.y) <= halfHeight;
-        local.z = 0f;
-        hitPoint = surface.transform.TransformPoint(local);
-        return true;
+            ? GetFallbackSurfacePoint(leftSurface, rayOrigin, rayDirection)
+            : GetFallbackSurfacePoint(frontSurface, rayOrigin, rayDirection);
     }
 
     /// <summary>現在スポットライトが向いているサーフェスを返す。</summary>
@@ -416,26 +350,75 @@ public class TestScreenVisualizer : MonoBehaviour
         return lastSurface == ProjectionTargetSurface.Left ? leftSurface : frontSurface;
     }
 
-    private Vector3 GetFallbackSurfacePoint(ProjectionSurface surface, Vector3 rayDirection)    {
+    private Vector3 GetCalculatedStandingPosition(Vector3 defaultPos)
+    {
+        if (!simulateStandingPosition)
+        {
+            return defaultPos;
+        }
+
+        float width = frontSurface != null ? frontSurface.Width : 3f;
+        float dist = width * standingDistanceRatio;
+
+        // Visualizerの基準位置(defaultPos)＝「画面の角」であると仮定し、
+        // 右方向(+X)と後ろ方向(-Z)に等距離 dist 分だけ下がった位置を仮想的な立ち位置とする。
+        // さらにインスペクタから manualOffset で微調整可能にする。
+        Vector3 simulatedPos = defaultPos + transform.right * dist - transform.forward * dist;
+        return simulatedPos + transform.TransformDirection(simulatedOriginOffset);
+    }
+
+    private Vector3 GetFallbackSurfacePoint(ProjectionSurface surface, Vector3 rayOrigin, Vector3 rayDirection)
+    {
         if (surface != null)
         {
-            Vector3 localDirection = surface.transform.InverseTransformDirection(rayDirection.normalized);
-            float nx = (localDirection.x * 0.5f) + 0.5f;
-            float ny = (localDirection.y * 0.5f) + 0.5f;
-            return surface.transform.position
-                + surface.transform.right * ((nx - 0.5f) * surface.Width)
-                + surface.transform.up * ((ny - 0.5f) * surface.Height);
+            Vector3 normal = surface.transform.forward;
+            Vector3 planePos = surface.transform.position;
+            float denom = Vector3.Dot(normal, rayDirection);
+            
+            // UnityのPlane.Raycastは面の「表裏」に依存するため、数学的な直線・平面交差判定で確実に衝突点を取得します。
+            if (Mathf.Abs(denom) > 0.0001f)
+            {
+                float t = Vector3.Dot(planePos - rayOrigin, normal) / denom;
+                if (t > 0f)
+                {
+                    return rayOrigin + rayDirection * t;
+                }
+            }
+            return rayOrigin + rayDirection * 100f;
         }
 
-        float aspect = (float)referenceResolution.x / referenceResolution.y;
+        float aspect = (float)referenceResolution.x / Mathf.Max(1f, referenceResolution.y);
         float screenWidthWorld = screenHeightWorld * aspect;
-        float halfHeight = screenHeightWorld * 0.5f;
+        
+        // ここも振動対策のためオリジナルの rayDirection.x に戻す
+        bool isLeft = rayDirection.x < 0f; 
 
-        if (rayDirection.x < 0f)
+        Vector3 planeCenter;
+        Vector3 planeNormal;
+
+        if (isLeft)
         {
-            return transform.TransformPoint(new Vector3(-screenWidthWorld * 0.5f, rayDirection.y * halfHeight, screenDistance));
+            planeCenter = transform.position - Vector3.right * screenDistance;
+            planeNormal = Vector3.right; 
+        }
+        else
+        {
+            planeCenter = transform.position + Vector3.forward * screenDistance;
+            planeNormal = -Vector3.forward; 
         }
 
-        return transform.TransformPoint(new Vector3(rayDirection.x * screenWidthWorld * 0.5f, rayDirection.y * halfHeight, screenDistance));
+        Plane virtualPlane = new Plane(planeNormal, planeCenter);
+        float denomFallback = Vector3.Dot(planeNormal, rayDirection);
+        
+        if (Mathf.Abs(denomFallback) > 0.0001f)
+        {
+            float t = Vector3.Dot(planeCenter - rayOrigin, planeNormal) / denomFallback;
+            if (t > 0f)
+            {
+                return rayOrigin + rayDirection * t;
+            }
+        }
+
+        return planeCenter;
     }
 }
