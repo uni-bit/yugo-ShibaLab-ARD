@@ -61,6 +61,15 @@ public class PoseTestBootstrap : MonoBehaviour
     [SerializeField] private int leftCameraTargetDisplay = 1;
     [SerializeField] private int frontCameraTargetDisplay = 2;
     [SerializeField] private float viewerDistanceFromScreens = DefaultViewerDistanceFromScreens;
+    [Header("Default Spotlight")]
+    [Tooltip("スポットライトの初期スポット角度（度）。来場者距離に応じて調整してください。")]
+    [SerializeField] private float defaultSpotAngle = 18f;
+    [Tooltip("スポットライトの初期レンジ（m）")]
+    [SerializeField] private float defaultSpotRange = 60f;
+    [Tooltip("スポットライトの初期輝度")]
+    [SerializeField] private float defaultSpotIntensity = 16f;
+    [Tooltip("スポットライトの初期色")]
+    [SerializeField] private Color defaultSpotColor = Color.white;
     [Header("Projection Cameras")]
     [Tooltip("フロント投影カメラ。割り当てた場合はそのカメラを使用し、自動生成しません。")]
     [SerializeField] private Camera frontProjectionCameraOverride;
@@ -426,10 +435,10 @@ public class PoseTestBootstrap : MonoBehaviour
 
         Light tipLight = tipLightObject.AddComponent<Light>();
         tipLight.type = LightType.Spot;
-        tipLight.spotAngle = 18f;
-        tipLight.range = 60f;
-        tipLight.intensity = 16f;
-        tipLight.color = Color.white;
+        tipLight.spotAngle = defaultSpotAngle;
+        tipLight.range = defaultSpotRange;
+        tipLight.intensity = defaultSpotIntensity;
+        tipLight.color = defaultSpotColor;
         ActiveSpotLight = tipLight;
         UpdateSpotlightShaderGlobals();
 

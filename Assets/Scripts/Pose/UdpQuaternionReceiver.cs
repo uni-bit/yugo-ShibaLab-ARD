@@ -48,6 +48,8 @@ public class UdpQuaternionReceiver : MonoBehaviour
     private Thread receiveThread;
     private volatile bool isRunning;
     private readonly Queue<string> recentPacketLogs = new Queue<string>();
+    private string pendingConsoleLog;
+    private float nextConsoleLogTime;
 
     private Quaternion pendingRotation = Quaternion.identity;
     private bool hasPendingRotation;
@@ -63,6 +65,9 @@ public class UdpQuaternionReceiver : MonoBehaviour
     private int recenterRequestCount;
     private int pendingRecenterRequests;
     private int touchPacketCount;
+    private float latestTouchX;
+    private float latestTouchY;
+    private bool hasPendingTouchPosition;
 
     public Quaternion LatestRawRotation { get; private set; } = Quaternion.identity;
     public Quaternion LatestStabilizedRawRotation { get; private set; } = Quaternion.identity;
@@ -78,10 +83,28 @@ public class UdpQuaternionReceiver : MonoBehaviour
     public string LastStatus { get; private set; } = "Waiting for UDP packets...";
     public DateTime LastReceivedTime { get; private set; } = DateTime.MinValue;
     public string RecentPacketDebug { get; private set; } = "-";
+    public Vector2 LatestTouchPosition { get; private set; }
+
+    public bool ConsumePendingTouchPosition(out Vector2 position)
+    {
+        lock (syncRoot)
+        {
+            if (!hasPendingTouchPosition)
+            {
+                position = LatestTouchPosition;
+                return false;
+            }
+
+            position = LatestTouchPosition;
+            hasPendingTouchPosition = false;
+            return true;
+        }
+    }
 
     private void OnEnable()
     {
         StartReceiver();
+        nextConsoleLogTime = 0f;
     }
 
     private void OnDisable()
@@ -92,6 +115,26 @@ public class UdpQuaternionReceiver : MonoBehaviour
     private void OnDestroy()
     {
         StopReceiver();
+    }
+
+    private void Update()
+    {
+        if (Time.time >= nextConsoleLogTime)
+        {
+            string logSnapshot;
+            lock (syncRoot)
+            {
+                logSnapshot = pendingConsoleLog;
+                pendingConsoleLog = null;
+            }
+
+            if (!string.IsNullOrEmpty(logSnapshot))
+            {
+                Debug.Log("[OSC Raw] " + logSnapshot);
+            }
+
+            nextConsoleLogTime = Time.time + 1f;
+        }
     }
 
     public bool ConsumeLatestRotation(out Quaternion rotation)
@@ -870,14 +913,62 @@ public class UdpQuaternionReceiver : MonoBehaviour
         bool hasActiveTouch = false;
         for (int index = 0; index < messages.Count; index++)
         {
-            if (IsActiveTouchMessage(messages[index]))
+            if (!hasActiveTouch && IsActiveTouchMessage(messages[index]))
             {
                 hasActiveTouch = true;
-                break;
             }
+
+            ExtractZigSimTouchPosition(messages[index]);
         }
 
         return TryRequestRecenterFromTouchState(hasActiveTouch);
+    }
+
+    private void ExtractZigSimTouchPosition(OscMessage message)
+    {
+        if (message.FloatArguments == null || message.FloatArguments.Count < 2)
+        {
+            return;
+        }
+
+        string address = message.Address;
+        if (string.IsNullOrEmpty(address))
+        {
+            return;
+        }
+
+        string normalized = address.Trim().ToLowerInvariant().Replace("\\", "/");
+        int lastSlash = normalized.LastIndexOf('/');
+        string lastSegment = lastSlash >= 0 ? normalized.Substring(lastSlash + 1) : normalized;
+
+        // Match /touch0 format (touch followed by digit only, not touchcount/touchradius/touchforce)
+        if (!lastSegment.StartsWith("touch", StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        string suffix = lastSegment.Substring(5);
+        if (suffix.Length == 0 || !char.IsDigit(suffix[0]))
+        {
+            return;
+        }
+
+        // Check that it's purely a touch ID (no alphabetical suffix like "radius" or "force")
+        for (int i = 0; i < suffix.Length; i++)
+        {
+            if (!char.IsDigit(suffix[i]))
+            {
+                return;
+            }
+        }
+
+        lock (syncRoot)
+        {
+            latestTouchX = message.FloatArguments[0];
+            latestTouchY = message.FloatArguments[1];
+            LatestTouchPosition = new Vector2(latestTouchX, latestTouchY);
+            hasPendingTouchPosition = true;
+        }
     }
 
     private bool TryRequestRecenterFromRawPayload(byte[] payload)
@@ -930,10 +1021,6 @@ public class UdpQuaternionReceiver : MonoBehaviour
 
             DateTime now = DateTime.UtcNow;
 
-            // Rising-edge detection: only trigger on the first touch message
-            // after a gap. ZigSim sends 2dtouch every frame while the finger
-            // is on the screen and stops when lifted. A gap >= 0.3 s means
-            // the finger was lifted and this is a new touch-down event.
             double secondsSinceLastTouchMessage = lastTouchPacketTime == DateTime.MinValue
                 ? double.MaxValue
                 : (now - lastTouchPacketTime).TotalSeconds;
@@ -979,18 +1066,28 @@ public class UdpQuaternionReceiver : MonoBehaviour
             ? string.Empty
             : message.Address.Trim().ToLowerInvariant().Replace("\\", "/").Replace(":", "/");
 
-        // ZIG SIM touch format: /(deviceUUID)/touch(touchId)1  (X position, float)
-        //                       /(deviceUUID)/touch(touchId)2  (Y position, float)
-        //                       /(deviceUUID)/touchradius(touchId)
-        //                       /(deviceUUID)/touchforce(touchId)
-        // When a finger is touching, these messages are sent every frame.
-        // When no finger is touching, these messages are NOT sent at all.
-        // Therefore: receiving any touch/touchradius/touchforce message = active touch.
+        // ZIG SIM touch format:
+        //   /(uuid)/touchcount ,i -> N          (N=0 means no touch)
+        //   /(uuid)/touch0 ,ff -> X, Y          (normalized screen position)
+        //   /(uuid)/touchradius0 ,f -> R
+        //   /(uuid)/touchforce0 ,f -> F
+        // When touchcount=0, touch0/touchradius/touchforce messages are NOT sent.
         if (IsZigSimTouchAddress(normalizedAddress))
         {
-            // touchforce with value 0 means no force (but finger IS touching)
-            // touchradius presence always means touch is active
-            // touch position (1 float) always means touch is active
+            // touchcount with integer value 0 means no active touches
+            if (normalizedAddress.Contains("touchcount"))
+            {
+                if (message.DebugArguments != null && message.DebugArguments.Count > 0)
+                {
+                    int count;
+                    if (int.TryParse(message.DebugArguments[0], out count))
+                    {
+                        return count > 0;
+                    }
+                }
+                return false;
+            }
+
             if (normalizedAddress.Contains("touchforce"))
             {
                 return message.FloatArguments != null
@@ -1289,6 +1386,9 @@ public class UdpQuaternionReceiver : MonoBehaviour
             }
 
             RecentPacketDebug = string.Join("\n\n", recentPacketLogs.ToArray());
+
+            // Keep the latest packet summary for periodic console output
+            pendingConsoleLog = summary;
         }
     }
 

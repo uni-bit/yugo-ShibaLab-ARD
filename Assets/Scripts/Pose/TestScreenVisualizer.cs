@@ -48,10 +48,14 @@ public class TestScreenVisualizer : MonoBehaviour
     [SerializeField] private bool androidInvertYaw;
     [SerializeField] private RotationAxisSource androidHorizontalAxisSource = RotationAxisSource.Z;
     [SerializeField] private RotationAxisSource androidVerticalAxisSource = RotationAxisSource.X;
+    [Header("Touch Calibration")]
+    [Tooltip("ZigSimのYが画面下向き正のとき true（iOS標準）。ワールド上方向と合わせるため反転する。")]
+    [SerializeField] private bool invertTouchY = true;
 
     private bool hasReference;
     private bool hasSmoothedTargetPoint;
     private ProjectionTargetSurface lastSurface = ProjectionTargetSurface.Front;
+    private Vector2 calibrationOffset;
 
     public string CurrentSurfaceName { get; private set; } = "Front";
     public Vector3 CurrentTargetPoint { get; private set; }
@@ -103,6 +107,51 @@ public class TestScreenVisualizer : MonoBehaviour
     {
         hasReference = false;
         hasSmoothedTargetPoint = false;
+        calibrationOffset = Vector2.zero;
+    }
+
+    public void SetCalibrationPoint(Vector2 normalizedTouchPosition)
+    {
+        // 後方互換用。直接 calibrationOffset をセットする旧 API。
+        // 新しいコードは SetCalibrationFromTouch を使用すること。
+        calibrationOffset = normalizedTouchPosition;
+    }
+
+    /// <summary>
+    /// ZigSim の touch0 座標 ([-1,1] 範囲) とキャリブレーション前のスポットライト
+    /// ターゲット位置からオフセットを計算してキャリブレーションを適用する。
+    /// <para>
+    /// タップ位置がワールド空間のどこに対応するかを算出し、現在のIMUターゲットとの
+    /// 差分をサーフェス UV スケールで表現して <c>calibrationOffset</c> に保存する。
+    /// </para>
+    /// </summary>
+    public void SetCalibrationFromTouch(Vector2 zigSimTouch, Vector3 previousTargetWorldPos)
+    {
+        ProjectionSurface activeSurface = GetActiveSurface();
+        if (activeSurface == null)
+        {
+            // サーフェス情報がない場合はフォールバックとして旧来の直接代入
+            calibrationOffset = zigSimTouch;
+            return;
+        }
+
+        // ZigSim [-1,1] → サーフェス UV [0,1]
+        float u = (zigSimTouch.x + 1f) * 0.5f;
+        float v = invertTouchY
+            ? 1f - (zigSimTouch.y + 1f) * 0.5f   // iOS: Y下向き正 → ワールド上方向へ反転
+            : (zigSimTouch.y + 1f) * 0.5f;
+
+        // タッチ位置をワールド座標に変換
+        Vector3 touchWorldPos = activeSurface.transform.position
+            + activeSurface.transform.right  * ((u - 0.5f) * activeSurface.Width)
+            + activeSurface.transform.up     * ((v - 0.5f) * activeSurface.Height);
+
+        // 現在のターゲットからタッチ位置へのベクトルを
+        // サーフェス右・上軸に投影し、Width/Height で正規化してオフセットにする
+        Vector3 diff = touchWorldPos - previousTargetWorldPos;
+        calibrationOffset = new Vector2(
+            Vector3.Dot(diff, activeSurface.transform.right) / Mathf.Max(0.001f, activeSurface.Width),
+            Vector3.Dot(diff, activeSurface.transform.up)    / Mathf.Max(0.001f, activeSurface.Height));
     }
 
     private void OnValidate()
@@ -177,6 +226,16 @@ public class TestScreenVisualizer : MonoBehaviour
         Vector3 worldTargetPoint;
         ProjectionTargetSurface surface;
         ResolveTargetPoint(rayOrigin, rayDirection, out surface, out worldTargetPoint);
+
+        if (calibrationOffset.sqrMagnitude > 0.00001f)
+        {
+            ProjectionSurface activeSurface = surface == ProjectionTargetSurface.Left ? leftSurface : frontSurface;
+            if (activeSurface != null)
+            {
+                worldTargetPoint += activeSurface.transform.right * (calibrationOffset.x * activeSurface.Width);
+                worldTargetPoint += activeSurface.transform.up * (calibrationOffset.y * activeSurface.Height);
+            }
+        }
 
         CurrentTargetPoint = worldTargetPoint;
         hasSmoothedTargetPoint = true;
@@ -318,8 +377,13 @@ public class TestScreenVisualizer : MonoBehaviour
         return true;
     }
 
-    private Vector3 GetFallbackSurfacePoint(ProjectionSurface surface, Vector3 rayDirection)
+    /// <summary>現在スポットライトが向いているサーフェスを返す。</summary>
+    private ProjectionSurface GetActiveSurface()
     {
+        return lastSurface == ProjectionTargetSurface.Left ? leftSurface : frontSurface;
+    }
+
+    private Vector3 GetFallbackSurfacePoint(ProjectionSurface surface, Vector3 rayDirection)    {
         if (surface != null)
         {
             Vector3 localDirection = surface.transform.InverseTransformDirection(rayDirection.normalized);

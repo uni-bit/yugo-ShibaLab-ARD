@@ -1,5 +1,6 @@
 using System.Collections;
 using UnityEngine;
+using UnityEngine.UI;
 
 [AddComponentMenu("Stages/Stage Transition Fader")]
 public class StageTransitionFader : MonoBehaviour
@@ -8,15 +9,15 @@ public class StageTransitionFader : MonoBehaviour
     [SerializeField] private float fadeInDuration = 0.9f;
     [SerializeField] private Color fadeColor = Color.black;
 
-    private static Texture2D fadeTexture;
     private float alpha;
     private bool isFading;
     private Color activeFadeColor = Color.black;
+    private Image[] fadeImages;
 
     public bool IsFading => isFading;
     public float Alpha => alpha;
 
-    public IEnumerator FadeOutIn(System.Action switchStageAction)
+    public IEnumerator FadeOutIn(System.Action switchStageAction, System.Action onFadeInStart = null)
     {
         if (isFading)
         {
@@ -25,19 +26,14 @@ public class StageTransitionFader : MonoBehaviour
 
         activeFadeColor = fadeColor;
         isFading = true;
-
-        yield return FadeAlpha(0f, 1f, fadeOutDuration);
-        switchStageAction?.Invoke();
-        yield return null;
-        yield return null;
-        yield return null;
-        yield return FadeAlpha(1f, 0f, fadeInDuration);
-
-        alpha = 0f;
-        isFading = false;
+        StartCoroutine(FadeSequence(switchStageAction, onFadeInStart, fadeOutDuration, fadeInDuration));
+        while (isFading)
+        {
+            yield return null;
+        }
     }
 
-    public IEnumerator FadeOutInCustom(System.Action switchStageAction, float customFadeOutDuration, float customFadeInDuration, Color customFadeColor)
+    public IEnumerator FadeOutInCustom(System.Action switchStageAction, float customFadeOutDuration, float customFadeInDuration, Color customFadeColor, System.Action onFadeInStart = null)
     {
         if (isFading)
         {
@@ -46,14 +42,22 @@ public class StageTransitionFader : MonoBehaviour
 
         activeFadeColor = customFadeColor;
         isFading = true;
+        StartCoroutine(FadeSequence(switchStageAction, onFadeInStart, customFadeOutDuration, customFadeInDuration));
+        while (isFading)
+        {
+            yield return null;
+        }
+    }
 
-        yield return FadeAlpha(0f, 1f, customFadeOutDuration);
+    private IEnumerator FadeSequence(System.Action switchStageAction, System.Action onFadeInStart, float outDuration, float inDuration)
+    {
+        yield return FadeAlpha(0f, 1f, outDuration);
         switchStageAction?.Invoke();
         yield return null;
         yield return null;
         yield return null;
-        yield return FadeAlpha(1f, 0f, customFadeInDuration);
-
+        onFadeInStart?.Invoke();
+        yield return FadeAlpha(1f, 0f, inDuration);
         alpha = 0f;
         isFading = false;
     }
@@ -79,29 +83,105 @@ public class StageTransitionFader : MonoBehaviour
         alpha = to;
     }
 
-    private void OnGUI()
+    private void Awake()
     {
-        if (alpha <= 0.001f)
-        {
-            return;
-        }
-
-        EnsureTexture();
-        Color previousColor = GUI.color;
-        GUI.color = new Color(activeFadeColor.r, activeFadeColor.g, activeFadeColor.b, alpha);
-        GUI.DrawTexture(new Rect(0f, 0f, Screen.width, Screen.height), fadeTexture);
-        GUI.color = previousColor;
+        EnsureFadeOverlays();
     }
 
-    private static void EnsureTexture()
+    private void LateUpdate()
     {
-        if (fadeTexture != null)
+        EnsureFadeOverlays();
+        UpdateFadeOverlays();
+    }
+
+    private void EnsureFadeOverlays()
+    {
+        int displayCount = Mathf.Max(3, Display.displays.Length);
+        if (fadeImages != null && fadeImages.Length >= displayCount)
         {
             return;
         }
 
-        fadeTexture = new Texture2D(1, 1, TextureFormat.RGBA32, false);
-        fadeTexture.SetPixel(0, 0, Color.white);
-        fadeTexture.Apply();
+        DestroyFadeOverlays();
+        fadeImages = new Image[displayCount];
+
+        for (int i = 0; i < displayCount; i++)
+        {
+            GameObject canvasObj = new GameObject("FadeOverlay_Display" + i);
+            canvasObj.transform.SetParent(transform, false);
+
+            Canvas canvas = canvasObj.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.targetDisplay = i;
+            canvas.sortingOrder = 32767;
+
+            canvasObj.AddComponent<CanvasScaler>();
+
+            GameObject imageObj = new GameObject("FadeImage");
+            imageObj.transform.SetParent(canvasObj.transform, false);
+
+            Image image = imageObj.AddComponent<Image>();
+            image.color = Color.clear;
+            image.raycastTarget = false;
+
+            RectTransform rt = image.rectTransform;
+            rt.anchorMin = Vector2.zero;
+            rt.anchorMax = Vector2.one;
+            rt.sizeDelta = Vector2.zero;
+            rt.anchoredPosition = Vector2.zero;
+
+            fadeImages[i] = image;
+            // Canvas は常にアクティブのまま保持。表示切り替えは image.color.a のみで制御する。
+        }
+    }
+
+    private void DestroyFadeOverlays()
+    {
+        if (fadeImages == null)
+        {
+            return;
+        }
+
+        for (int i = 0; i < fadeImages.Length; i++)
+        {
+            if (fadeImages[i] == null)
+            {
+                continue;
+            }
+
+            // parent = Canvas GameObject
+            Transform canvasTransform = fadeImages[i].transform.parent;
+            if (canvasTransform != null)
+            {
+                Destroy(canvasTransform.gameObject);
+            }
+        }
+
+        fadeImages = null;
+    }
+
+    private void UpdateFadeOverlays()
+    {
+        if (fadeImages == null)
+        {
+            return;
+        }
+
+        // alpha=0 のときは完全透明にし、Canvas の SetActive は操作しない。
+        // これにより全ディスプレイで ScreenSpaceOverlay が常時有効になり、
+        // フェード開始直後から正しく表示される。
+        Color overlayColor = alpha > 0.001f
+            ? new Color(activeFadeColor.r, activeFadeColor.g, activeFadeColor.b, alpha)
+            : Color.clear;
+
+        for (int i = 0; i < fadeImages.Length; i++)
+        {
+            if (fadeImages[i] == null)
+            {
+                continue;
+            }
+
+            fadeImages[i].color = overlayColor;
+        }
     }
 }

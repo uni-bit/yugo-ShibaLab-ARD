@@ -170,6 +170,12 @@ public class Stage2CompletionSequence : MonoBehaviour
         ResetSequenceState();
     }
 
+    public void ConfigureTransition(bool advanceOnComplete, int targetStageIndex)
+    {
+        advanceToStage3OnComplete = advanceOnComplete;
+        nextStageIndex = Mathf.Max(0, targetStageIndex);
+    }
+
     public void Play()
     {
         if (currentPhase != SequencePhase.Waiting)
@@ -452,10 +458,25 @@ public class Stage2CompletionSequence : MonoBehaviour
         }
 
         StageSequenceController sequenceController = FindFirstObjectByType<StageSequenceController>();
-        if (sequenceController != null)
+        if (sequenceController == null)
         {
-            sequenceController.FadeToStage(nextStageIndex);
+            return;
         }
+
+        // nextStageIndex が有効範囲内かチェック。範囲外の場合は遷移しない（誤設定による
+        // 意図しないステージスキップを防ぐ）。
+        if (nextStageIndex < 0 || nextStageIndex >= sequenceController.StageCount)
+        {
+            Debug.LogWarning(
+                string.Format(
+                    "[Stage2CompletionSequence] nextStageIndex={0} が有効範囲外 (0–{1}) のため遷移をスキップします。",
+                    nextStageIndex,
+                    sequenceController.StageCount - 1),
+                this);
+            return;
+        }
+
+        sequenceController.FadeToStage(nextStageIndex);
     }
 
     private Vector3 ResolveTravelDirection()

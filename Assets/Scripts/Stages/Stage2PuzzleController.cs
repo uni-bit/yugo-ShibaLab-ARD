@@ -15,12 +15,21 @@ public class Stage2PuzzleController : MonoBehaviour
     [SerializeField] private Stage2CompletionSequence completionSequence;
     [SerializeField] private KeyCode debugRevealCompleteKey = KeyCode.Alpha7;
     [SerializeField] private KeyCode debugFillCodeKey = KeyCode.Alpha8;
+    [Header("Stage Init")]
+    [Tooltip("有効化時にアンビエントライトを暗くする（ステージ4からのループ復帰で環境を初期化するため）")]
+    [SerializeField] private bool resetAmbientOnEnable = true;
+    [SerializeField] private Color stage2AmbientColor = new Color(0.04f, 0.04f, 0.05f, 1f);
 
     private Stage2State currentState;
 
     private void OnEnable()
     {
         currentState = Stage2State.Waiting;
+
+        if (Application.isPlaying && resetAmbientOnEnable)
+        {
+            RenderSettings.ambientLight = stage2AmbientColor;
+        }
     }
 
     private void Update()

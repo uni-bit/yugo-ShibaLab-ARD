@@ -597,6 +597,7 @@ public static class StageSequenceDebugBuilder
 
         StageSymbolNumberRevealPuzzle revealPuzzle = root.GetComponent<StageSymbolNumberRevealPuzzle>();
         completionSequence.Configure(rigRoot, new[] { contentRoot, topTextRoot }, panel.transform, root);
+        completionSequence.ConfigureTransition(true, 2);
         puzzleController.Configure(revealPuzzle, codeLockPuzzle, completionSequence);
     }
 

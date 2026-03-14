@@ -118,15 +118,18 @@ public class StageCodeFormulaDisplay : MonoBehaviour
         questionText = EnsureFormulaText(QuestionName, out createdQuestion);
         frameRenderer = EnsureFrameRenderer(FrameName);
 
-        float spacing = 1.05f;
-        float startX = -2.1f;
-        float questionX = 2.31f;
+        // spacing を 0.60f に縮めて 〇△□ を詰める。
+        // = は symbols の直後に配置し、= と ??? の重なりを解消するため questionX に 1.10f のオフセットを確保する。
+        float spacing = 0.60f;
+        float startX = -1.5f;
+        float equalsX = startX + (spacing * 3f) + 0.05f;   // symbols 直後 = 0.35f (layoutOffset 後: 0.05f)
+        float questionX = equalsX + 1.10f;                  // = から十分離す = 1.45f (layoutOffset 後: 1.15f)
         ConfigureCircle(circleRenderer, new Vector3(startX + (spacing * 0f), 0f, 0f));
         ConfigureTriangle(triangleRenderer, new Vector3(startX + (spacing * 1f), -0.01f, 0f));
         ConfigureSquare(squareRenderer, new Vector3(startX + (spacing * 2f), 0f, 0f));
-        ConfigureFormulaText(equalsText, "=", ApplyLayoutOffset(new Vector3(startX + (spacing * 3f), 0f, 0f)), 0.09f, 180);
-        ConfigureFormulaText(questionText, "???", ApplyLayoutOffset(new Vector3(questionX, 0f, 0f)), 0.09f, 180);
-        ConfigureFrame(frameRenderer, ApplyLayoutOffset(new Vector3(0f, 0f, 0f)), new Vector2(6.2f, 1.45f), 0.04f);
+        ConfigureFormulaText(equalsText, "=", ApplyLayoutOffset(new Vector3(equalsX, 0f, 0f)), 0.09f, 100);
+        ConfigureFormulaText(questionText, "???", ApplyLayoutOffset(new Vector3(questionX, 0f, 0f)), 0.09f, 100);
+        ConfigureFrame(frameRenderer, ApplyLayoutOffset(new Vector3(0f, 0f, 0f)), new Vector2(5.4f, 1.45f), 0.04f);
  
         layoutInitialized = true;
 

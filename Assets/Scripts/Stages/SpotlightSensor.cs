@@ -66,6 +66,11 @@ public class SpotlightSensor : MonoBehaviour
         sourceLight = lightSource;
     }
 
+    public void SetLineOfSight(bool required)
+    {
+        requireLineOfSight = required;
+    }
+
     private void ResolveLight()
     {
         if (sourceLight != null)

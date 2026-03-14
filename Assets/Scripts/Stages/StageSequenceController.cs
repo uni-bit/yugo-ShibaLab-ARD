@@ -44,6 +44,7 @@ public class StageSequenceController : MonoBehaviour
     private PoseTestBootstrap poseBootstrap;
 
     public int CurrentStageIndex { get; private set; }
+    public int StageCount => stageRoots != null ? stageRoots.Length : 0;
 
     private void Reset()
     {
@@ -146,31 +147,31 @@ public class StageSequenceController : MonoBehaviour
         bool hadSpotlight = activeSpotLight != null;
         bool restoreEnabled = hadSpotlight && activeSpotLight.enabled;
 
-        // Preload next stage once the overlay is nearly opaque so the user
-        // cannot see both stages at once, but Unity has time to run OnEnable
-        // on all components before the actual switch fires.
         GameObject nextRoot = stageRoots != null && stageIndex >= 0 && stageIndex < stageRoots.Length
             ? stageRoots[stageIndex]
             : null;
         StartCoroutine(PreloadStageWhenOverlayOpaque(nextRoot));
 
-        yield return transitionFader.FadeOutIn(() =>
-        {
-            // Disable spotlight only at the fully-black moment so the
-            // fade-out overlay is visible while the scene is still lit.
-            if (hadSpotlight)
+        yield return transitionFader.FadeOutIn(
+            () =>
             {
-                activeSpotLight.enabled = false;
-            }
-            ApplyStageVisibility(stageIndex);
-            RefreshActiveStageState();
-        });
-
-        if (hadSpotlight)
-        {
-            RefreshActiveStageState();
-            activeSpotLight.enabled = restoreEnabled;
-        }
+                // 全黒タイミング: スポットライトを消してステージ〜切り替え
+                if (hadSpotlight)
+                {
+                    activeSpotLight.enabled = false;
+                }
+                ApplyStageVisibility(stageIndex);
+                RefreshActiveStageState();
+            },
+            () =>
+            {
+                // フェードイン開始時: スポットライトを復元 → 屠坡と共に庺なシーンが徐々に明るく
+                if (hadSpotlight)
+                {
+                    RefreshActiveStageState();
+                    activeSpotLight.enabled = restoreEnabled;
+                }
+            });
     }
 
     public void FadeToStageWithOptions(int stageIndex, float fadeOutDuration, float fadeInDuration, Color fadeOverlayColor)
@@ -198,21 +199,27 @@ public class StageSequenceController : MonoBehaviour
             : null;
         StartCoroutine(PreloadStageWhenOverlayOpaque(nextRoot));
 
-        yield return transitionFader.FadeOutInCustom(() =>
-        {
-            if (hadSpotlight)
+        yield return transitionFader.FadeOutInCustom(
+            () =>
             {
-                activeSpotLight.enabled = false;
-            }
-            ApplyStageVisibility(stageIndex);
-            RefreshActiveStageState();
-        }, fadeOutDuration, fadeInDuration, fadeOverlayColor);
-
-        if (hadSpotlight)
-        {
-            RefreshActiveStageState();
-            activeSpotLight.enabled = restoreEnabled;
-        }
+                if (hadSpotlight)
+                {
+                    activeSpotLight.enabled = false;
+                }
+                ApplyStageVisibility(stageIndex);
+                RefreshActiveStageState();
+            },
+            fadeOutDuration,
+            fadeInDuration,
+            fadeOverlayColor,
+            () =>
+            {
+                if (hadSpotlight)
+                {
+                    RefreshActiveStageState();
+                    activeSpotLight.enabled = restoreEnabled;
+                }
+            });
     }
 
     private IEnumerator PreloadStageWhenOverlayOpaque(GameObject stageRoot)
@@ -222,9 +229,18 @@ public class StageSequenceController : MonoBehaviour
             yield break;
         }
 
-        // Wait until the fade overlay is nearly opaque so the user cannot
-        // see the newly activated stage behind the current one.
-        yield return new WaitUntil(() => transitionFader != null && transitionFader.Alpha >= 0.88f);
+        // フェードオーバーレイがほぼ不透明になるまで待機してから次ステージを有効化する。
+        // transitionFader が消滅した場合や IsFading が false になった場合はタイムアウトとして抜ける。
+        float waited = 0f;
+        const float timeoutSeconds = 5f;
+        yield return new WaitUntil(() =>
+        {
+            waited += Time.deltaTime;
+            return transitionFader == null
+                || !transitionFader.IsFading
+                || transitionFader.Alpha >= 0.88f
+                || waited >= timeoutSeconds;
+        });
 
         if (stageRoot != null && !stageRoot.activeSelf)
         {

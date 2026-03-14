@@ -14,7 +14,8 @@ public class Stage4SequenceController : MonoBehaviour
     [SerializeField] private float holdBeforeReturnSeconds = 10f;
     [SerializeField] private float returnFadeOutDuration = 2.5f;
     [SerializeField] private float returnFadeInDuration = 2.5f;
-    [SerializeField] private int returnStageIndex = 0;
+    // Debug: returns to Stage 2 (index 1) for looped playtesting. Change to 0 for Stage 1 in production.
+    [SerializeField] private int returnStageIndex = 1;
 
     private void OnEnable()
     {

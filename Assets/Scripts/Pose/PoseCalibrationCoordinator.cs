@@ -37,7 +37,16 @@ public class PoseCalibrationCoordinator : MonoBehaviour
         if (receiver != null && receiver.ConsumePendingRecenterRequest())
         {
             lastHandledRecenterRequestCount = receiver.RecenterRequestCount;
-            ResetAllCalibration();
+
+            Vector2 touchPos;
+            if (receiver.ConsumePendingTouchPosition(out touchPos))
+            {
+                ResetAllCalibrationWithTouchPoint(touchPos);
+            }
+            else
+            {
+                ResetAllCalibration();
+            }
             return;
         }
 
@@ -66,6 +75,26 @@ public class PoseCalibrationCoordinator : MonoBehaviour
         if (visualizer != null)
         {
             visualizer.ResetReference();
+        }
+    }
+
+    public void ResetAllCalibrationWithTouchPoint(Vector2 normalizedTouchPosition)
+    {
+        // キャリブレーションリセット前に現在のスポットライトターゲットを保存する。
+        // driver/visualizer のリセット後でも previousTarget は変化しないため、
+        // 差分オフセットの計算に使用できる。
+        Vector3 previousTarget = visualizer != null ? visualizer.CurrentTargetPoint : Vector3.zero;
+
+        if (driver != null)
+        {
+            driver.ResetCalibration();
+        }
+
+        if (visualizer != null)
+        {
+            visualizer.ResetReference();
+            // タッチ位置とリセット前ターゲットから正しいオフセットを計算して適用する
+            visualizer.SetCalibrationFromTouch(normalizedTouchPosition, previousTarget);
         }
     }
 

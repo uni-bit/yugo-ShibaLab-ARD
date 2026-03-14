@@ -19,23 +19,7 @@ public class Stage3RockHintPuzzle : MonoBehaviour
 {
     private const string EmissiveShellName = "Stage3 Emissive Shell";
 
-    [System.Serializable]
-    private struct LoopingLiftTarget
-    {
-        public Transform Target;
-        public float MinY;
-        public float MaxY;
-        public float UpSpeed;
-    }
 
-    [System.Serializable]
-    private struct ObstacleRockEntry
-    {
-        public Transform Rock;
-        public float ResetY;
-        public float MaxY;
-        public float RiseSpeed;
-    }
 
     private enum FinalePhase
     {
@@ -88,10 +72,25 @@ public class Stage3RockHintPuzzle : MonoBehaviour
     [SerializeField] private int burstParticleCount = 22;
     [SerializeField] private float burstSpeed = 2.8f;
     [SerializeField] private float burstLifetime = 0.85f;
-    [SerializeField] private LoopingLiftTarget[] loopingLiftTargets = new LoopingLiftTarget[0];
-    [SerializeField] private ObstacleRockEntry[] obstacleRocks = new ObstacleRockEntry[0];
+    [Header("Looping Lift")]
+    [SerializeField] private Transform[] loopingLiftTargets = new Transform[0];
+    [SerializeField] private float loopingLiftMinY = 0f;
+    [SerializeField] private float loopingLiftMaxY = 2f;
+    [SerializeField] private float loopingLiftUpSpeed = 0.5f;
+    [Header("Obstacle Rocks")]
+    [SerializeField] private Transform[] obstacleRocks = new Transform[0];
+    [SerializeField] private float obstacleRockResetY = 0f;
+    [SerializeField] private float obstacleRockMaxY = 3f;
+    [SerializeField] private float obstacleRockRiseSpeed = 0.4f;
     [SerializeField] private float obstacleGlowIntensity = 0.8f;
     [SerializeField] private Color obstacleGlowColor = new Color(0.85f, 0.55f, 0.2f, 1f);
+    [Header("Rise Randomization")]
+    [SerializeField] private float speedRandomRange = 0.3f;
+    [SerializeField] private float swayAmplitude = 0.08f;
+    [SerializeField] private float swayFrequency = 1.2f;
+    [Header("Puzzle Activation")]
+    [Tooltip("ステージ有効化直後にヒント岩への照射を無視する秒数。フェードイン中の誤検知を防ぐ。")]
+    [SerializeField] private float puzzleActivationDelay = 1.5f;
 
     private SpotlightSensor greenHintSensor;
     private SpotlightSensor blueHintSensor;
@@ -108,6 +107,14 @@ public class Stage3RockHintPuzzle : MonoBehaviour
     private float finaleTimer;
     private Color initialAmbientColor;
     private Light revealLight;
+    private float[] liftSpeedMultipliers;
+    private float[] liftSwayPhases;
+    private Vector3[] liftInitialPositions;
+    private float[] obstacleSpeedMultipliers;
+    private float[] obstacleSwayPhases;
+    private Vector3[] obstacleInitialPositions;
+    // ステージ有効化からの経過秒数（puzzleActivationDelay 超過まではヒント判定を行わない）
+    private float activationElapsed;
 
     private sealed class RendererState
     { 
@@ -144,10 +151,21 @@ public class Stage3RockHintPuzzle : MonoBehaviour
 
     private void OnEnable()
     {
+        ResetPuzzleState();
         ResolveSensors();
         CacheRockVisuals();
         CacheLightState();
         RefreshVisuals();
+        InitRiseRandomization();
+        EnsureObstacleColliders();
+    }
+
+    private void OnDisable()
+    {
+        if (Application.isPlaying)
+        {
+            RenderSettings.ambientLight = initialAmbientColor;
+        }
     }
 
     private void OnValidate()
@@ -165,10 +183,19 @@ public class Stage3RockHintPuzzle : MonoBehaviour
             return;
         }
 
-        UpdateHintActivation(greenHintSensor, ref greenHintHoldTimer, ref greenActivated, greenHintRock, greenGlowColor, ref greenHintBurstPlayed, greenPedestalRock, ref greenPedestalBurstPlayed);
-        UpdateHintActivation(blueHintSensor, ref blueHintHoldTimer, ref blueActivated, blueHintRock, blueGlowColor, ref blueHintBurstPlayed, bluePedestalRock, ref bluePedestalBurstPlayed);
+        // obstacleとリフトは常に動かす
         UpdateLoopingLiftTargets();
         UpdateObstacleRocks();
+
+        // ステージ開始直後のクールダウン中はヒント判定をスキップ（フェードイン中の誤検知がパズルを進行させないように）
+        if (activationElapsed < puzzleActivationDelay)
+        {
+            activationElapsed += Time.deltaTime;
+            return;
+        }
+
+        UpdateHintActivation(greenHintSensor, ref greenHintHoldTimer, ref greenActivated, greenHintRock, greenGlowColor, ref greenHintBurstPlayed, greenPedestalRock, ref greenPedestalBurstPlayed);
+        UpdateHintActivation(blueHintSensor, ref blueHintHoldTimer, ref blueActivated, blueHintRock, blueGlowColor, ref blueHintBurstPlayed, bluePedestalRock, ref bluePedestalBurstPlayed);
 
         if (greenActivated && blueActivated)
         {
@@ -253,6 +280,107 @@ public class Stage3RockHintPuzzle : MonoBehaviour
         blueHintSensor = EnsureHintSensor(blueHintRock);
     }
 
+    private void ResetPuzzleState()
+    {
+        greenHintHoldTimer = 0f;
+        blueHintHoldTimer = 0f;
+        greenActivated = false;
+        blueActivated = false;
+        greenPedestalBurstPlayed = false;
+        bluePedestalBurstPlayed = false;
+        greenHintBurstPlayed = false;
+        blueHintBurstPlayed = false;
+        finalePhase = FinalePhase.None;
+        finaleTimer = 0f;
+        rendererStates.Clear();
+        activationElapsed = 0f;
+
+        if (revealLight != null)
+        {
+            revealLight.enabled = false;
+            revealLight.intensity = 0f;
+        }
+
+        RestoreInitialPositions(loopingLiftTargets, liftInitialPositions);
+        RestoreInitialPositions(obstacleRocks, obstacleInitialPositions);
+    }
+
+    private void InitRiseRandomization()
+    {
+        liftSpeedMultipliers = CreateSpeedMultipliers(loopingLiftTargets);
+        liftSwayPhases = CreateSwayPhases(loopingLiftTargets);
+        liftInitialPositions = CapturePositions(loopingLiftTargets);
+        obstacleSpeedMultipliers = CreateSpeedMultipliers(obstacleRocks);
+        obstacleSwayPhases = CreateSwayPhases(obstacleRocks);
+        obstacleInitialPositions = CapturePositions(obstacleRocks);
+    }
+
+    private float[] CreateSpeedMultipliers(Transform[] targets)
+    {
+        if (targets == null || targets.Length == 0)
+        {
+            return null;
+        }
+
+        float[] result = new float[targets.Length];
+        for (int i = 0; i < targets.Length; i++)
+        {
+            result[i] = 1f + Random.Range(-speedRandomRange, speedRandomRange);
+        }
+
+        return result;
+    }
+
+    private static float[] CreateSwayPhases(Transform[] targets)
+    {
+        if (targets == null || targets.Length == 0)
+        {
+            return null;
+        }
+
+        float[] result = new float[targets.Length];
+        for (int i = 0; i < targets.Length; i++)
+        {
+            result[i] = Random.Range(0f, Mathf.PI * 2f);
+        }
+
+        return result;
+    }
+
+    private static Vector3[] CapturePositions(Transform[] targets)
+    {
+        if (targets == null || targets.Length == 0)
+        {
+            return null;
+        }
+
+        Vector3[] result = new Vector3[targets.Length];
+        for (int i = 0; i < targets.Length; i++)
+        {
+            result[i] = targets[i] != null ? targets[i].position : Vector3.zero;
+        }
+
+        return result;
+    }
+
+    private static void RestoreInitialPositions(Transform[] targets, Vector3[] initialPositions)
+    {
+        if (targets == null || initialPositions == null)
+        {
+            return;
+        }
+
+        for (int i = 0; i < targets.Length && i < initialPositions.Length; i++)
+        {
+            if (targets[i] == null)
+            {
+                continue;
+            }
+
+            targets[i].position = initialPositions[i];
+        }
+    }
+
     private SpotlightSensor EnsureHintSensor(Transform rockRoot)
     {
         if (rockRoot == null)
@@ -268,7 +396,17 @@ public class Stage3RockHintPuzzle : MonoBehaviour
 
         Renderer sampleRenderer = rockRoot.GetComponentInChildren<Renderer>(true);
         Collider sampleCollider = rockRoot.GetComponentInChildren<Collider>(true);
+        if (sampleCollider == null)
+        {
+            MeshFilter meshFilter = rockRoot.GetComponentInChildren<MeshFilter>(true);
+            if (meshFilter != null)
+            {
+                sampleCollider = meshFilter.gameObject.AddComponent<MeshCollider>();
+            }
+        }
+
         sensor.Configure(null, null, rockRoot, sampleRenderer, sampleCollider);
+        sensor.SetLineOfSight(true);
         return sensor;
     }
 
@@ -374,7 +512,7 @@ public class Stage3RockHintPuzzle : MonoBehaviour
 
     private bool IsBlockedByObstacle(SpotlightSensor sensor)
     {
-        if (obstacleRocks == null || obstacleRocks.Length == 0 || sensor == null)
+        if (sensor == null)
         {
             return false;
         }
@@ -396,29 +534,10 @@ public class Stage3RockHintPuzzle : MonoBehaviour
 
         direction /= maxDistance;
 
-        for (int index = 0; index < obstacleRocks.Length; index++)
+        if (Physics.Raycast(new Ray(lightPosition, direction), out RaycastHit hit, maxDistance, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
         {
-            Transform obstacleRoot = obstacleRocks[index].Rock;
-            if (obstacleRoot == null)
-            {
-                continue;
-            }
-
-            Collider[] colliders = obstacleRoot.GetComponentsInChildren<Collider>(false);
-            for (int colliderIndex = 0; colliderIndex < colliders.Length; colliderIndex++)
-            {
-                Collider col = colliders[colliderIndex];
-                if (col == null || !col.enabled)
-                {
-                    continue;
-                }
-
-                Ray ray = new Ray(lightPosition, direction);
-                if (col.Raycast(ray, out RaycastHit hit, maxDistance))
-                {
-                    return true;
-                }
-            }
+            bool hitSensor = hit.transform == sensor.transform || hit.transform.IsChildOf(sensor.transform);
+            return !hitSensor;
         }
 
         return false;
@@ -431,58 +550,109 @@ public class Stage3RockHintPuzzle : MonoBehaviour
             return;
         }
 
+        float maxY = Mathf.Max(loopingLiftMinY, loopingLiftMaxY);
+        float minY = Mathf.Min(loopingLiftMinY, loopingLiftMaxY);
+        float baseSpeed = Mathf.Max(0f, loopingLiftUpSpeed);
+
         for (int index = 0; index < loopingLiftTargets.Length; index++)
         {
-            LoopingLiftTarget entry = loopingLiftTargets[index];
-            if (entry.Target == null)
+            Transform target = loopingLiftTargets[index];
+            if (target == null)
             {
                 continue;
             }
 
-            float maxY = Mathf.Max(entry.MinY, entry.MaxY);
-            float minY = Mathf.Min(entry.MinY, entry.MaxY);
-            float speed = Mathf.Max(0f, entry.UpSpeed);
-
-            Vector3 position = entry.Target.position;
-            position.y += speed * Time.deltaTime;
+            float speedMul = liftSpeedMultipliers != null && index < liftSpeedMultipliers.Length ? liftSpeedMultipliers[index] : 1f;
+            Vector3 position = target.position;
+            position.y += baseSpeed * speedMul * Time.deltaTime;
             if (position.y >= maxY)
             {
                 position.y = minY;
             }
 
-            entry.Target.position = position;
+            if (liftSwayPhases != null && index < liftSwayPhases.Length && liftInitialPositions != null && index < liftInitialPositions.Length)
+            {
+                float sway = Mathf.Sin(Time.time * swayFrequency + liftSwayPhases[index]) * swayAmplitude;
+                position.x = liftInitialPositions[index].x + sway;
+            }
+
+            target.position = position;
         }
     }
 
-    private void UpdateObstacleRocks()
+    /// <summary>
+    /// 障害物岩に非トリガーのコライダーがない場合は BoxCollider を自動追加する。
+    /// SpotlightSensor の LineOfSight レイキャストが障害物岩で正しくブロックされるために必要。
+    /// </summary>
+    private void EnsureObstacleColliders()
     {
+        if (obstacleRocks == null)
+        {
+            return;
+        }
+
+        for (int i = 0; i < obstacleRocks.Length; i++)
+        {
+            Transform rock = obstacleRocks[i];
+            if (rock == null)
+            {
+                continue;
+            }
+
+            Collider[] existing = rock.GetComponentsInChildren<Collider>(true);
+            bool hasNonTrigger = false;
+            for (int j = 0; j < existing.Length; j++)
+            {
+                if (existing[j] != null && !existing[j].isTrigger)
+                {
+                    hasNonTrigger = true;
+                    break;
+                }
+            }
+
+            if (!hasNonTrigger)
+            {
+                BoxCollider added = rock.gameObject.AddComponent<BoxCollider>();
+                added.isTrigger = false;
+            }
+        }
+    }
+
+    private void UpdateObstacleRocks()    {
         if (obstacleRocks == null || obstacleRocks.Length == 0)
         {
             return;
         }
 
+        float maxY = Mathf.Max(obstacleRockResetY, obstacleRockMaxY);
+        float resetY = Mathf.Min(obstacleRockResetY, obstacleRockMaxY);
+        float baseSpeed = Mathf.Max(0f, obstacleRockRiseSpeed);
+
         for (int index = 0; index < obstacleRocks.Length; index++)
         {
-            ObstacleRockEntry entry = obstacleRocks[index];
-            if (entry.Rock == null)
+            Transform rock = obstacleRocks[index];
+            if (rock == null)
             {
                 continue;
             }
 
-            float maxY = Mathf.Max(entry.ResetY, entry.MaxY);
-            float resetY = Mathf.Min(entry.ResetY, entry.MaxY);
-            float speed = Mathf.Max(0f, entry.RiseSpeed);
-
-            Vector3 position = entry.Rock.position;
-            position.y += speed * Time.deltaTime;
+            float speedMul = obstacleSpeedMultipliers != null && index < obstacleSpeedMultipliers.Length ? obstacleSpeedMultipliers[index] : 1f;
+            Vector3 position = rock.position;
+            position.y += baseSpeed * speedMul * Time.deltaTime;
             if (position.y >= maxY)
             {
                 position.y = resetY;
             }
 
-            entry.Rock.position = position;
+            if (obstacleSwayPhases != null && index < obstacleSwayPhases.Length && obstacleInitialPositions != null && index < obstacleInitialPositions.Length)
+            {
+                float sway = Mathf.Sin(Time.time * swayFrequency + obstacleSwayPhases[index]) * swayAmplitude;
+                position.x = obstacleInitialPositions[index].x + sway;
+            }
 
-            UpdateObstacleGlow(entry.Rock);
+            rock.position = position;
+
+            UpdateObstacleGlow(rock);
         }
     }
 
@@ -1129,15 +1299,17 @@ public class Stage3RockHintPuzzle : MonoBehaviour
             return;
         }
 
-        if (useBrightTransitionToNextStage)
+        if (nextStageIndex < 0 || nextStageIndex >= sequenceController.StageCount)
         {
-            // White fade-out, fast fade-in: the new stage appears bright (視界が開ける)
-            sequenceController.FadeToStageWithOptions(nextStageIndex, 0.8f, 0.25f, Color.white);
+            Debug.LogWarning(
+                string.Format(
+                    "[Stage3RockHintPuzzle] nextStageIndex={0} が有効範囲外のため遷移をスキップします。",
+                    nextStageIndex),
+                this);
+            return;
         }
-        else
-        {
-            sequenceController.FadeToStage(nextStageIndex);
-        }
+
+        sequenceController.FadeToStageWithOptions(nextStageIndex, 0.8f, 0.9f, Color.black);
     }
 
     private void SpawnBurst(Transform target)
