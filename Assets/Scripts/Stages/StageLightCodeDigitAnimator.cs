@@ -4,11 +4,11 @@ using UnityEngine;
 [AddComponentMenu("Stages/Stage Code Digit Animator")]
 public class StageLightCodeDigitAnimator : MonoBehaviour
 {
-    private const float IncomingExtraOffset = 0.55f;
+    private const float IncomingExtraOffset = 0.5f;
 
     [SerializeField] private TextMesh primaryText;
     [SerializeField] private float animationDuration = 0.34f;
-    [SerializeField] private float exitDistance = 0.9f;
+    [SerializeField] private float exitDistance = 0.5f;
     [SerializeField] private float entryDistance = 1.6f;
     [SerializeField] private float adjacentDigitOpacity = 0.36f;
 
@@ -230,7 +230,8 @@ public class StageLightCodeDigitAnimator : MonoBehaviour
         float travelDistance = Mathf.Max(0.0001f, exitDistance);
         float incomingStartDistance = travelDistance + IncomingExtraOffset;
         float outgoingY = travelDistance * eased * animationDirection;
-        float incomingY = (incomingStartDistance * (1f - eased) * -animationDirection);
+        float incomingStartY = -incomingStartDistance * animationDirection;
+        float incomingY = Mathf.Lerp(incomingStartY, 0f, eased);
 
         primaryText.transform.localPosition = new Vector3(0f, outgoingY, 0f);
         secondaryText.transform.localPosition = new Vector3(0f, incomingY, 0f);
