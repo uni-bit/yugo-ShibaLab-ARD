@@ -248,6 +248,7 @@ public static class StageSequenceDebugBuilder
             new Vector3(-4.7f, 0.72f, 6.1f),
             new Vector3(3.8f, 0f, 13.4f),
             new Vector3(0f, 0.7f, 0.85f),
+                false,
             true,
             3,
             true);
@@ -266,6 +267,7 @@ public static class StageSequenceDebugBuilder
             new Vector3(4.6f, 0.78f, 7.3f),
             new Vector3(-4.2f, 0f, 14.2f),
             new Vector3(0f, 0.72f, 0.95f),
+            true,
             false,
             3,
             false);
@@ -288,6 +290,7 @@ public static class StageSequenceDebugBuilder
         Vector3 greenHintPosition,
         Vector3 cavePosition,
         Vector3 blueHintLocalPosition,
+        bool createStageLabel,
         bool advanceToNextStage,
         int nextStageIndex,
         bool brightTransitionToNext = false)
@@ -297,21 +300,28 @@ public static class StageSequenceDebugBuilder
 
         EnsureGround(root, "Stage" + stageNumber + " Ground", new Vector3(0f, -0.55f, groundScale.z * 0.5f + 0.5f), groundScale, groundColor);
 
-        Transform labelRoot = FindOrCreateChildIfMissing(root, "Stage" + stageNumber + " Label", labelPosition);
-        labelRoot.localPosition = labelPosition;
-        TextMesh labelText = labelRoot.GetComponent<TextMesh>();
-        if (labelText == null)
+        if (createStageLabel)
         {
-            labelText = labelRoot.gameObject.AddComponent<TextMesh>();
-        }
+            Transform labelRoot = FindOrCreateChildIfMissing(root, "Stage" + stageNumber + " Label", labelPosition);
+            labelRoot.localPosition = labelPosition;
+            TextMesh labelText = labelRoot.GetComponent<TextMesh>();
+            if (labelText == null)
+            {
+                labelText = labelRoot.gameObject.AddComponent<TextMesh>();
+            }
 
-        labelText.text = "Stage " + stageNumber + "\n" + objectiveText;
-        labelText.characterSize = 0.18f;
-        labelText.fontSize = 96;
-        labelText.alignment = TextAlignment.Center;
-        labelText.anchor = TextAnchor.MiddleCenter;
-        labelText.color = new Color(0.9f, 0.95f, 1f, 1f);
-        ApplyBuiltInFont(labelText);
+            labelText.text = "Stage " + stageNumber + "\n" + objectiveText;
+            labelText.characterSize = 0.18f;
+            labelText.fontSize = 96;
+            labelText.alignment = TextAlignment.Center;
+            labelText.anchor = TextAnchor.MiddleCenter;
+            labelText.color = new Color(0.9f, 0.95f, 1f, 1f);
+            ApplyBuiltInFont(labelText);
+        }
+        else
+        {
+            RemoveChildIfExists(root, "Stage" + stageNumber + " Label");
+        }
 
         Transform puzzleRoot = FindOrCreateChildIfMissing(root, "Stage" + stageNumber + " Puzzle Root", Vector3.zero);
         Transform pedestalRow = FindOrCreateChildIfMissing(puzzleRoot, "Pedestal Row", pedestalRowPosition);
@@ -343,6 +353,7 @@ public static class StageSequenceDebugBuilder
     {
         string[] generatedChildNames =
         {
+            "Stage3 Label",
             "Code Lock Panel",
             "Code Lock Content",
             "Lock Door",
@@ -497,25 +508,13 @@ public static class StageSequenceDebugBuilder
         RemoveLegacyFormulaContent(topTextRoot);
         RemoveComponentIfExists<FaceCameraBillboard>(topTextRoot.gameObject);
         SpotlightSensor formulaSensor = EnsureSensor(topTextRoot.gameObject, topTextRoot, null, null);
-        TextMesh topFormula = EnsureLabel(topTextRoot, "Formula State Driver", "○△□ = ???", Vector3.zero, 0.08f).GetComponent<TextMesh>();
-        if (topFormula != null)
-        {
-            ApplyBuiltInFont(topFormula);
-            topFormula.fontSize = 160;
-            topFormula.color = Color.white;
-            MeshRenderer formulaRenderer = topFormula.GetComponent<MeshRenderer>();
-            if (formulaRenderer != null)
-            {
-                formulaRenderer.enabled = false;
-            }
-        }
 
         StageCodeFormulaDisplay formulaDisplay = topTextRoot.GetComponent<StageCodeFormulaDisplay>();
         if (formulaDisplay == null)
         {
             formulaDisplay = topTextRoot.gameObject.AddComponent<StageCodeFormulaDisplay>();
         }
-        formulaDisplay.Configure(topFormula, formulaSensor);
+        formulaDisplay.Configure(null, formulaSensor);
 
         StageLightCodeLockPuzzle codeLockPuzzle = root.GetComponent<StageLightCodeLockPuzzle>();
         if (codeLockPuzzle == null)
@@ -593,7 +592,7 @@ public static class StageSequenceDebugBuilder
         }
 
         rig.Configure(panel.transform, contentRoot, topTextRoot, door.transform, columnRoots);
-        codeLockPuzzle.Configure(columns, door.transform, topFormula, formulaDisplay, "834");
+        codeLockPuzzle.Configure(columns, door.transform, null, formulaDisplay, "834");
 
         StageSymbolNumberRevealPuzzle revealPuzzle = root.GetComponent<StageSymbolNumberRevealPuzzle>();
         completionSequence.Configure(rigRoot, new[] { contentRoot, topTextRoot }, panel.transform, root);
@@ -948,8 +947,7 @@ public static class StageSequenceDebugBuilder
                 continue;
             }
 
-            bool keepChild = child.name == "Formula State Driver"
-                || child.name == "Circle Symbol"
+            bool keepChild = child.name == "Circle Symbol"
                 || child.name == "Triangle Symbol"
                 || child.name == "Square Symbol"
                 || child.name == "Formula Value"

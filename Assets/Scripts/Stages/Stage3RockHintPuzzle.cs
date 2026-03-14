@@ -162,7 +162,14 @@ public class Stage3RockHintPuzzle : MonoBehaviour
 
     private void OnDisable()
     {
-        if (Application.isPlaying)
+        bool preserveAmbientForStage4Transition = Application.isPlaying
+            && finalePhase == FinalePhase.Complete
+            && advanceToNextStageOnComplete
+            && nextStageIndex == 3;
+
+        // Stage3 完了→Stage4 の遷移だけは、Stage4 側のフェード明転へ繋ぐため ambient を維持する。
+        // それ以外の無効化では必ず初期 ambient に戻して、Stage4→Stage2 復帰時の明るさ残りを防ぐ。
+        if (Application.isPlaying && !preserveAmbientForStage4Transition)
         {
             RenderSettings.ambientLight = initialAmbientColor;
         }
@@ -405,7 +412,7 @@ public class Stage3RockHintPuzzle : MonoBehaviour
             }
         }
 
-        sensor.Configure(null, null, rockRoot, sampleRenderer, sampleCollider);
+        sensor.Configure(null, null, null, sampleRenderer, sampleCollider);
         sensor.SetLineOfSight(true);
         return sensor;
     }
@@ -498,7 +505,8 @@ public class Stage3RockHintPuzzle : MonoBehaviour
             return false;
         }
 
-        Vector3 toTarget = sensor.transform.position - sourceLight.transform.position;
+        Vector3 samplePosition = sensor.SampleWorldPosition;
+        Vector3 toTarget = samplePosition - sourceLight.transform.position;
         if (toTarget.sqrMagnitude <= 0.000001f)
         {
             return false;
@@ -524,7 +532,7 @@ public class Stage3RockHintPuzzle : MonoBehaviour
         }
 
         Vector3 lightPosition = sourceLight.transform.position;
-        Vector3 sensorPosition = sensor.transform.position;
+        Vector3 sensorPosition = sensor.SampleWorldPosition;
         Vector3 direction = sensorPosition - lightPosition;
         float maxDistance = direction.magnitude;
         if (maxDistance <= 0.001f)

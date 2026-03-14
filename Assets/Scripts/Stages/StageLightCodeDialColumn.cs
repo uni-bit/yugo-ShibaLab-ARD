@@ -99,6 +99,38 @@ public class StageLightCodeDialColumn : MonoBehaviour
         }
     }
 
+    public void ResetState()
+    {
+        inputLocked = false;
+        incrementTimer = 0f;
+        decrementTimer = 0f;
+        SetDigit(startingDigit);
+
+        if (digitText != null)
+        {
+            digitText.color = Color.white;
+            StageSpotlightMaterialUtility.ApplySpotlitText(digitText, new Color(1f, 1f, 1f, 0f), Color.white);
+        }
+
+        if (digitAnimator != null)
+        {
+            digitAnimator.SetDigitImmediate(CurrentDigit);
+            digitAnimator.RefreshVisualStyle();
+        }
+
+        if (incrementIndicator != null)
+        {
+            incrementIndicator.SetSolvedAppearance(false);
+            incrementIndicator.SetProcessingActive(false);
+        }
+
+        if (decrementIndicator != null)
+        {
+            decrementIndicator.SetSolvedAppearance(false);
+            decrementIndicator.SetProcessingActive(false);
+        }
+    }
+
     private bool ProcessSensor(SpotlightSensor sensor, ref float timer, int direction)
     {
         if (inputLocked)

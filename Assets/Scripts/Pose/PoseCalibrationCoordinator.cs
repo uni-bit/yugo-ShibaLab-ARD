@@ -6,6 +6,7 @@ public class PoseCalibrationCoordinator : MonoBehaviour
     [SerializeField] private UdpQuaternionReceiver receiver;
     [SerializeField] private PoseRotationDriver driver;
     [SerializeField] private TestScreenVisualizer visualizer;
+    [SerializeField] private PoseTestBootstrap bootstrap;
     [SerializeField] private KeyCode recenterKey = KeyCode.C;
 
     private int lastHandledRecenterRequestCount;
@@ -62,11 +63,14 @@ public class PoseCalibrationCoordinator : MonoBehaviour
         receiver = receiverReference;
         driver = driverReference;
         visualizer = visualizerReference;
+        ResolveBootstrap();
         lastHandledRecenterRequestCount = receiver != null ? receiver.RecenterRequestCount : 0;
     }
 
     public void ResetAllCalibration()
     {
+        ResolveBootstrap();
+
         if (driver != null)
         {
             driver.ResetCalibration();
@@ -75,6 +79,11 @@ public class PoseCalibrationCoordinator : MonoBehaviour
         if (visualizer != null)
         {
             visualizer.ResetReference();
+        }
+
+        if (bootstrap != null)
+        {
+            bootstrap.ResetViewerRigPose();
         }
     }
 
@@ -113,6 +122,16 @@ public class PoseCalibrationCoordinator : MonoBehaviour
         if (visualizer == null)
         {
             visualizer = GetComponent<TestScreenVisualizer>();
+        }
+
+        ResolveBootstrap();
+    }
+
+    private void ResolveBootstrap()
+    {
+        if (bootstrap == null)
+        {
+            bootstrap = GetComponent<PoseTestBootstrap>();
         }
     }
 }

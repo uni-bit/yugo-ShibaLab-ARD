@@ -26,6 +26,7 @@ public class SpotlightSensor : MonoBehaviour
     public bool IsLit { get; private set; }
     public float Exposure01 { get; private set; }
     public Light SourceLight => sourceLight;
+    public Vector3 SampleWorldPosition => GetSampleWorldPosition();
 
     private void Reset()
     {
@@ -117,12 +118,19 @@ public class SpotlightSensor : MonoBehaviour
             return 0f;
         }
 
-        if (requireLineOfSight && Physics.Raycast(sourceLight.transform.position, direction, out RaycastHit hit, distance, occlusionMask, QueryTriggerInteraction.Ignore))
+        if (requireLineOfSight)
         {
-            Transform hitTransform = hit.transform;
-            bool isSelf = hitTransform == transform || hitTransform.IsChildOf(transform);
-            if (!isSelf)
+            RaycastHit[] hits = Physics.RaycastAll(sourceLight.transform.position, direction, distance, occlusionMask, QueryTriggerInteraction.Ignore);
+            System.Array.Sort(hits, (left, right) => left.distance.CompareTo(right.distance));
+            for (int index = 0; index < hits.Length; index++)
             {
+                Transform hitTransform = hits[index].transform;
+                bool isSelf = hitTransform == transform || hitTransform.IsChildOf(transform);
+                if (isSelf)
+                {
+                    break;
+                }
+
                 return 0f;
             }
         }

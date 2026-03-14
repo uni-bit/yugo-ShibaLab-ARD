@@ -4,6 +4,8 @@ using UnityEngine;
 [AddComponentMenu("Stages/Stage Code Digit Animator")]
 public class StageLightCodeDigitAnimator : MonoBehaviour
 {
+    private const float IncomingExtraOffset = 0.55f;
+
     [SerializeField] private TextMesh primaryText;
     [SerializeField] private float animationDuration = 0.34f;
     [SerializeField] private float exitDistance = 0.9f;
@@ -82,14 +84,14 @@ public class StageLightCodeDigitAnimator : MonoBehaviour
         if (secondaryText != null)
         {
             secondaryText.text = displayedDigit.ToString();
-            secondaryText.transform.localPosition = new Vector3(0f, -entryDistance, 0f);
+            secondaryText.transform.localPosition = new Vector3(0f, -(exitDistance + IncomingExtraOffset), 0f);
             secondaryText.gameObject.SetActive(false);
         }
 
         if (adjacentText != null)
         {
             adjacentText.text = displayedDigit.ToString();
-            adjacentText.transform.localPosition = new Vector3(0f, -entryDistance * 2f, 0f);
+            adjacentText.transform.localPosition = new Vector3(0f, -exitDistance, 0f);
             adjacentText.gameObject.SetActive(false);
         }
     }
@@ -122,9 +124,7 @@ public class StageLightCodeDigitAnimator : MonoBehaviour
 
         if (adjacentText != null)
         {
-            int adjacentDigit = ((targetDigit + animationDirection) % 10 + 10) % 10;
-            adjacentText.text = adjacentDigit.ToString();
-            adjacentText.gameObject.SetActive(true);
+            adjacentText.gameObject.SetActive(false);
         }
 
         ApplyAnimationFrame(0f);
@@ -227,24 +227,23 @@ public class StageLightCodeDigitAnimator : MonoBehaviour
         }
 
         float eased = Mathf.SmoothStep(0f, 1f, normalized);
-        float outgoingY = exitDistance * eased * animationDirection;
-        float incomingY = entryDistance * (eased - 1f) * animationDirection;
-        float adjacentY = entryDistance * (eased - 2f) * animationDirection;
+        float travelDistance = Mathf.Max(0.0001f, exitDistance);
+        float incomingStartDistance = travelDistance + IncomingExtraOffset;
+        float outgoingY = travelDistance * eased * animationDirection;
+        float incomingY = (incomingStartDistance * (1f - eased) * -animationDirection);
 
         primaryText.transform.localPosition = new Vector3(0f, outgoingY, 0f);
         secondaryText.transform.localPosition = new Vector3(0f, incomingY, 0f);
-        adjacentText.transform.localPosition = new Vector3(0f, adjacentY, 0f);
+        adjacentText.transform.localPosition = new Vector3(0f, incomingY, 0f);
 
         Color baseColor = primaryText.color;
         Color outgoingColor = baseColor;
         outgoingColor.a = Mathf.Lerp(1f, 0f, eased);
         Color incomingColor = baseColor;
         incomingColor.a = Mathf.Lerp(0f, 1f, eased);
-        Color adjacentColor = baseColor;
-        adjacentColor.a = adjacentDigitOpacity * Mathf.Lerp(0f, 1f, Mathf.Min(1f, normalized * 3f));
         primaryText.color = outgoingColor;
         secondaryText.color = incomingColor;
-        adjacentText.color = adjacentColor;
+        adjacentText.color = new Color(baseColor.r, baseColor.g, baseColor.b, 0f);
 
         if (normalized >= 1f)
         {

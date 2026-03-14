@@ -16,13 +16,17 @@ using UnityEditor;
 /// <c>autoSyncStageSetup = true</c> のとき、OnValidate / Awake のたびに自動同期が走る。
 /// </para>
 /// </summary>
+public interface IStageActivationHandler
+{
+    void OnStageActivated();
+}
+
 [AddComponentMenu("Stages/Stage Sequence Controller")]
 public class StageSequenceController : MonoBehaviour
 {
     private const int DefaultStartingStageIndex = 1;
-    private const int StageCount = 4;
 
-    [SerializeField] private GameObject[] stageRoots = new GameObject[StageCount];
+    [SerializeField] private GameObject[] stageRoots = new GameObject[4];
     [SerializeField] private bool autoCreateStageSetupIfMissing = true;
     [SerializeField] private bool autoSyncStageSetup = true;
     [SerializeField] private int startingStageIndex = DefaultStartingStageIndex;
@@ -125,7 +129,8 @@ public class StageSequenceController : MonoBehaviour
     {
         ApplyStageVisibility(stageIndex);
         RefreshActiveStageState();
-    }
+        NotifyStageActivated();
+    } 
 
     public void FadeToStage(int stageIndex)
     {
@@ -147,11 +152,6 @@ public class StageSequenceController : MonoBehaviour
         bool hadSpotlight = activeSpotLight != null;
         bool restoreEnabled = hadSpotlight && activeSpotLight.enabled;
 
-        GameObject nextRoot = stageRoots != null && stageIndex >= 0 && stageIndex < stageRoots.Length
-            ? stageRoots[stageIndex]
-            : null;
-        StartCoroutine(PreloadStageWhenOverlayOpaque(nextRoot));
-
         yield return transitionFader.FadeOutIn(
             () =>
             {
@@ -162,9 +162,10 @@ public class StageSequenceController : MonoBehaviour
                 }
                 ApplyStageVisibility(stageIndex);
                 RefreshActiveStageState();
+                NotifyStageActivated();
             },
             () =>
-            {
+            { 
                 // フェードイン開始時: スポットライトを復元 → 屠坡と共に庺なシーンが徐々に明るく
                 if (hadSpotlight)
                 {
@@ -176,6 +177,11 @@ public class StageSequenceController : MonoBehaviour
 
     public void FadeToStageWithOptions(int stageIndex, float fadeOutDuration, float fadeInDuration, Color fadeOverlayColor)
     {
+        FadeToStageWithOptions(stageIndex, fadeOutDuration, fadeInDuration, fadeOverlayColor, true);
+    }
+
+    public void FadeToStageWithOptions(int stageIndex, float fadeOutDuration, float fadeInDuration, Color fadeOverlayColor, bool preloadNextStage)
+    {
         ResolveRuntimeReferences();
         if (!Application.isPlaying || transitionFader == null || transitionFader.IsFading)
         {
@@ -183,21 +189,16 @@ public class StageSequenceController : MonoBehaviour
             return;
         }
 
-        StartCoroutine(FadeToStageWithCustomFade(stageIndex, fadeOutDuration, fadeInDuration, fadeOverlayColor));
+        StartCoroutine(FadeToStageWithCustomFade(stageIndex, fadeOutDuration, fadeInDuration, fadeOverlayColor, preloadNextStage));
     }
 
-    private IEnumerator FadeToStageWithCustomFade(int stageIndex, float fadeOutDuration, float fadeInDuration, Color fadeOverlayColor)
+    private IEnumerator FadeToStageWithCustomFade(int stageIndex, float fadeOutDuration, float fadeInDuration, Color fadeOverlayColor, bool preloadNextStage)
     {
         ResolveRuntimeReferences();
 
         Light activeSpotLight = poseBootstrap != null ? poseBootstrap.ActiveSpotLight : null;
         bool hadSpotlight = activeSpotLight != null;
         bool restoreEnabled = hadSpotlight && activeSpotLight.enabled;
-
-        GameObject nextRoot = stageRoots != null && stageIndex >= 0 && stageIndex < stageRoots.Length
-            ? stageRoots[stageIndex]
-            : null;
-        StartCoroutine(PreloadStageWhenOverlayOpaque(nextRoot));
 
         yield return transitionFader.FadeOutInCustom(
             () =>
@@ -208,6 +209,7 @@ public class StageSequenceController : MonoBehaviour
                 }
                 ApplyStageVisibility(stageIndex);
                 RefreshActiveStageState();
+                NotifyStageActivated();
             },
             fadeOutDuration,
             fadeInDuration,
@@ -392,6 +394,29 @@ public class StageSequenceController : MonoBehaviour
             }
         }
 
+    }
+
+    private void NotifyStageActivated()
+    {
+        if (stageRoots == null || CurrentStageIndex < 0 || CurrentStageIndex >= stageRoots.Length)
+        {
+            return;
+        }
+
+        GameObject activeRoot = stageRoots[CurrentStageIndex];
+        if (activeRoot == null)
+        {
+            return;
+        }
+
+        MonoBehaviour[] behaviours = activeRoot.GetComponentsInChildren<MonoBehaviour>(true);
+        for (int index = 0; index < behaviours.Length; index++)
+        {
+            if (behaviours[index] is IStageActivationHandler activationHandler)
+            {
+                activationHandler.OnStageActivated();
+            }
+        }
     }
 
     private void ApplyActiveStageSpotlightSettings(GameObject activeRoot)

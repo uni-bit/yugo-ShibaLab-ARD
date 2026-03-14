@@ -85,6 +85,7 @@ public class PoseTestBootstrap : MonoBehaviour
     private ProjectionSurface cachedFrontSurface;
     private ProjectionSurface cachedLeftSurface;
     private Transform cachedViewerOrigin;
+    private Transform cachedRotationPivot;
     private StageSequenceController stageSequenceController;
     private int lastAppliedStageIndex = -1;
 
@@ -104,6 +105,34 @@ public class PoseTestBootstrap : MonoBehaviour
 
     public Light ActiveSpotLight { get; private set; }
     public Transform ViewerOriginTransform { get; private set; }
+
+    public void ResetViewerRigPose()
+    {
+        if (cachedViewerOrigin == null)
+        {
+            return;
+        }
+
+        cachedViewerOrigin.localPosition = GetViewerOriginLocalPosition(viewerDistanceFromScreens);
+        cachedViewerOrigin.localRotation = Quaternion.identity;
+
+        if (cachedRotationPivot != null)
+        {
+            cachedRotationPivot.localPosition = cachedViewerOrigin.localPosition;
+            cachedRotationPivot.localRotation = Quaternion.identity;
+            AlignRotationPivotToDualScreenCenter(cachedRotationPivot, cachedFrontSurface, cachedLeftSurface);
+        }
+
+        if (frontProjectionCamera != null && cachedFrontSurface != null)
+        {
+            ConfigureCamera(frontProjectionCamera, Mathf.Clamp(frontCameraTargetDisplay, 0, 7), 40f, cachedFrontSurface, cachedViewerOrigin, false, false);
+        }
+
+        if (leftProjectionCamera != null && cachedLeftSurface != null)
+        {
+            ConfigureCamera(leftProjectionCamera, Mathf.Clamp(leftCameraTargetDisplay, 0, 7), 40f, cachedLeftSurface, cachedViewerOrigin, false, false);
+        }
+    }
 
     private void Reset()
     {
@@ -419,6 +448,7 @@ public class PoseTestBootstrap : MonoBehaviour
         rotationPivot.transform.localPosition = viewerOrigin.localPosition;
         rotationPivot.transform.localRotation = Quaternion.identity;
         AlignRotationPivotToDualScreenCenter(rotationPivot.transform, frontSurface, leftSurface);
+        cachedRotationPivot = rotationPivot.transform;
 
         UdpQuaternionReceiver receiver = EnsureComponent<UdpQuaternionReceiver>();
         PoseCalibrationCoordinator calibrationCoordinator = EnsureComponent<PoseCalibrationCoordinator>();
@@ -454,6 +484,8 @@ public class PoseTestBootstrap : MonoBehaviour
 
     private static Transform CreateViewerOrigin(Transform parent)
     {
+        GameObject viewerObject = new GameObject(ViewerOriginName);
+        viewerObject.transform.SetParent(parent, false);
         float distanceFromFrontScreen = Mathf.Max(0.05f, DefaultViewerDistanceFromScreens);
         PoseTestBootstrap bootstrap = parent != null ? parent.GetComponentInParent<PoseTestBootstrap>() : null;
         if (bootstrap != null)
@@ -461,14 +493,17 @@ public class PoseTestBootstrap : MonoBehaviour
             distanceFromFrontScreen = Mathf.Max(0.05f, bootstrap.viewerDistanceFromScreens);
         }
 
-        float viewerX = (-FrontScreenWidth * 0.5f) + distanceFromFrontScreen;
-        float viewerZ = ScreenDistance - distanceFromFrontScreen;
-
-        GameObject viewerObject = new GameObject(ViewerOriginName);
-        viewerObject.transform.SetParent(parent, false);
-        viewerObject.transform.localPosition = new Vector3(viewerX, ViewerHeight, viewerZ);
+        viewerObject.transform.localPosition = GetViewerOriginLocalPosition(distanceFromFrontScreen);
         viewerObject.transform.localRotation = Quaternion.identity;
         return viewerObject.transform;
+    }
+
+    private static Vector3 GetViewerOriginLocalPosition(float distanceFromFrontScreen)
+    {
+        float clampedDistance = Mathf.Max(0.05f, distanceFromFrontScreen);
+        float viewerX = (-FrontScreenWidth * 0.5f) + clampedDistance;
+        float viewerZ = ScreenDistance - clampedDistance;
+        return new Vector3(viewerX, ViewerHeight, viewerZ);
     }
 
     private static ProjectionSurface CreateFrontSurface(Transform parent)

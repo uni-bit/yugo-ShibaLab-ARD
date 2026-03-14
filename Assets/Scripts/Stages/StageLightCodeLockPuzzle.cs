@@ -46,7 +46,17 @@ public class StageLightCodeLockPuzzle : MonoBehaviour
             closedDoorLocalPosition = doorTransform.localPosition;
         }
 
-        ApplyFormulaState();
+        ResetPuzzleState();
+    }
+
+    private void OnEnable()
+    {
+        ResetPuzzleState();
+    }
+
+    public void ResetRuntimeState()
+    {
+        ResetPuzzleState();
     }
 
     private void Update()
@@ -89,7 +99,7 @@ public class StageLightCodeLockPuzzle : MonoBehaviour
             closedDoorLocalPosition = doorTransform.localPosition;
         }
 
-        ApplyFormulaState();
+        ResetPuzzleState();
     }
 
     public void ApplySolvedVisualState()
@@ -199,6 +209,38 @@ public class StageLightCodeLockPuzzle : MonoBehaviour
         {
             SetDoorGlowActive(false);
         }
+    }
+
+    private void ResetPuzzleState()
+    {
+        IsSolved = false;
+        solvedVisualsApplied = false;
+
+        if (doorTransform != null)
+        {
+            doorTransform.localPosition = closedDoorLocalPosition;
+        }
+
+        if (formulaText != null)
+        {
+            formulaText.color = lockedFormulaColor;
+        }
+
+        if (formulaDisplay != null)
+        {
+            formulaDisplay.ClearDisplayColorOverride();
+            formulaDisplay.RefreshState();
+        }
+
+        for (int index = 0; index < columns.Length; index++)
+        {
+            if (columns[index] != null)
+            {
+                columns[index].ResetState();
+            }
+        }
+
+        SetDoorGlowActive(false);
     }
 
     private void SetDoorGlowActive(bool isActive)

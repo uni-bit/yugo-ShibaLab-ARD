@@ -14,7 +14,7 @@ using UnityEngine;
 /// </para>
 /// </summary>
 [AddComponentMenu("Stages/Stage 2 Completion Sequence")]
-public class Stage2CompletionSequence : MonoBehaviour
+public class Stage2CompletionSequence : MonoBehaviour, IStageActivationHandler
 {
     private enum SequencePhase
     {
@@ -48,6 +48,7 @@ public class Stage2CompletionSequence : MonoBehaviour
         public bool HasLitColor;
         public Color HiddenColor = new Color(1f, 1f, 1f, 0f);
         public bool HasHiddenColor;
+        public Color EmissionColor = Color.black;
         public bool HasEmissionColor;
     }
 
@@ -103,6 +104,9 @@ public class Stage2CompletionSequence : MonoBehaviour
     private Color initialAmbientColor;
     private Transform[] configuredCollapseTargets = new Transform[0];
     private StageLightCodeLockPuzzle codeLockPuzzle;
+    private Vector3 initialStageRootLocalPosition;
+    private Quaternion initialStageRootLocalRotation;
+    private bool hasInitialStageRootTransform;
 
     public bool IsPlaying => currentPhase != SequencePhase.Waiting && currentPhase != SequencePhase.Complete;
     public bool IsComplete => currentPhase == SequencePhase.Complete;
@@ -113,9 +117,16 @@ public class Stage2CompletionSequence : MonoBehaviour
         {
             stageRoot = transform;
         }
+
+        CaptureInitialStageRootTransform();
     }
 
     private void OnEnable()
+    {
+        ResetSequenceState();
+    }
+
+    public void OnStageActivated()
     {
         ResetSequenceState();
     }
@@ -167,6 +178,8 @@ public class Stage2CompletionSequence : MonoBehaviour
         stageRoot = stageRootReference != null ? stageRootReference : transform;
         panelRenderer = panelTransform != null ? panelTransform.GetComponent<Renderer>() : null;
         panelCollider = panelTransform != null ? panelTransform.GetComponent<Collider>() : null;
+        hasInitialStageRootTransform = false;
+        CaptureInitialStageRootTransform();
         ResetSequenceState();
     }
 
@@ -188,6 +201,11 @@ public class Stage2CompletionSequence : MonoBehaviour
 
     private void ResetSequenceState()
     {
+        CaptureInitialStageRootTransform();
+        RestoreInitialStageRootTransform();
+        RestoreCollapsedVisualState();
+        RestoreCapturedRendererStates();
+
         currentPhase = SequencePhase.Waiting;
         phaseElapsed = 0f;
         collapsePieces.Clear();
@@ -218,6 +236,97 @@ public class Stage2CompletionSequence : MonoBehaviour
             finalGlowLight.intensity = 0f;
             finalGlowLight.enabled = false;
         }
+    }
+
+    private void RestoreCollapsedVisualState()
+    {
+        for (int index = collapsePieces.Count - 1; index >= 0; index--)
+        {
+            CollapsePiece piece = collapsePieces[index];
+            if (piece != null && piece.Transform != null)
+            {
+                Destroy(piece.Transform.gameObject);
+            }
+        }
+
+        Transform cleanupRoot = stageRoot != null ? stageRoot : transform;
+        if (cleanupRoot != null)
+        {
+            Transform[] descendants = cleanupRoot.GetComponentsInChildren<Transform>(true);
+            for (int index = descendants.Length - 1; index >= 0; index--)
+            {
+                Transform descendant = descendants[index];
+                if (descendant == null)
+                {
+                    continue;
+                }
+
+                if (descendant.name.Contains("Collapse Proxy") || descendant.name.StartsWith("Panel Shard "))
+                {
+                    Destroy(descendant.gameObject);
+                }
+            }
+        }
+
+        Transform[] targets = GetEffectiveCollapseTargets();
+        for (int targetIndex = 0; targetIndex < targets.Length; targetIndex++)
+        {
+            Transform target = targets[targetIndex];
+            if (target == null)
+            {
+                continue;
+            }
+
+            Renderer[] renderers = target.GetComponentsInChildren<Renderer>(true);
+            for (int index = 0; index < renderers.Length; index++)
+            {
+                if (renderers[index] != null)
+                {
+                    renderers[index].enabled = true;
+                }
+            }
+
+            Collider[] colliders = target.GetComponentsInChildren<Collider>(true);
+            for (int index = 0; index < colliders.Length; index++)
+            {
+                if (colliders[index] != null)
+                {
+                    colliders[index].enabled = true;
+                }
+            }
+
+            StageCodeFormulaDisplay[] formulaDisplays = target.GetComponentsInChildren<StageCodeFormulaDisplay>(true);
+            for (int index = 0; index < formulaDisplays.Length; index++)
+            {
+                if (formulaDisplays[index] != null)
+                {
+                    formulaDisplays[index].enabled = true;
+                }
+            }
+        }
+    }
+
+    private void CaptureInitialStageRootTransform()
+    {
+        if (stageRoot == null || hasInitialStageRootTransform)
+        {
+            return;
+        }
+
+        initialStageRootLocalPosition = stageRoot.localPosition;
+        initialStageRootLocalRotation = stageRoot.localRotation;
+        hasInitialStageRootTransform = true;
+    }
+
+    private void RestoreInitialStageRootTransform()
+    {
+        if (stageRoot == null || !hasInitialStageRootTransform)
+        {
+            return;
+        }
+
+        stageRoot.localPosition = initialStageRootLocalPosition;
+        stageRoot.localRotation = initialStageRootLocalRotation;
     }
 
     private void BeginDelayBeforeCollapse()
@@ -935,10 +1044,94 @@ public class Stage2CompletionSequence : MonoBehaviour
                     state.HasHiddenColor = true;
                 }
 
-                state.HasEmissionColor = sharedMaterial.HasProperty("_EmissionColor");
+                if (sharedMaterial.HasProperty("_EmissionColor"))
+                {
+                    state.EmissionColor = sharedMaterial.GetColor("_EmissionColor");
+                    state.HasEmissionColor = true;
+                }
             }
 
             rendererStates.Add(state);
+        }
+    }
+
+    private void RestoreCapturedRendererStates()
+    {
+        for (int index = 0; index < rendererStates.Count; index++)
+        {
+            RendererState state = rendererStates[index];
+            if (state == null || state.Renderer == null)
+            {
+                continue;
+            }
+
+            state.Renderer.GetPropertyBlock(state.PropertyBlock);
+
+            if (state.HasBaseColor)
+            {
+                state.PropertyBlock.SetColor("_BaseColor", state.BaseColor);
+            }
+
+            if (state.HasAlbedoColor)
+            {
+                state.PropertyBlock.SetColor("_Color", state.AlbedoColor);
+            }
+
+            if (state.HasLitColor)
+            {
+                state.PropertyBlock.SetColor("_LitColor", state.LitColor);
+            }
+
+            if (state.HasHiddenColor)
+            {
+                state.PropertyBlock.SetColor("_HiddenColor", state.HiddenColor);
+            }
+
+            if (state.HasEmissionColor)
+            {
+                state.PropertyBlock.SetColor("_EmissionColor", state.EmissionColor);
+            }
+
+            state.Renderer.SetPropertyBlock(state.PropertyBlock);
+
+            Material sharedMaterial = state.Renderer.sharedMaterial;
+            if (sharedMaterial == null)
+            {
+                continue;
+            }
+
+            if (state.HasBaseColor)
+            {
+                sharedMaterial.SetColor("_BaseColor", state.BaseColor);
+            }
+
+            if (state.HasAlbedoColor)
+            {
+                sharedMaterial.color = state.AlbedoColor;
+            }
+
+            if (state.HasLitColor)
+            {
+                sharedMaterial.SetColor("_LitColor", state.LitColor);
+            }
+
+            if (state.HasHiddenColor)
+            {
+                sharedMaterial.SetColor("_HiddenColor", state.HiddenColor);
+            }
+
+            if (state.HasEmissionColor)
+            {
+                sharedMaterial.SetColor("_EmissionColor", state.EmissionColor);
+                if (state.EmissionColor.maxColorComponent > 0.0001f)
+                {
+                    sharedMaterial.EnableKeyword("_EMISSION");
+                }
+                else
+                {
+                    sharedMaterial.DisableKeyword("_EMISSION");
+                }
+            }
         }
     }
 
