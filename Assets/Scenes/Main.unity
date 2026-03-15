@@ -41691,7 +41691,7 @@ MonoBehaviour:
   windowedHeight: 1080
   leftCameraTargetDisplay: 1
   frontCameraTargetDisplay: 2
-  viewerDistanceFromScreens: 1.4
+  viewerDistanceFromScreens: 2
   defaultSpotAngle: 18
   defaultSpotRange: 60
   defaultSpotIntensity: 16
@@ -41791,7 +41791,7 @@ MonoBehaviour:
   receiver: {fileID: 1219946086}
   rotationTarget: {fileID: 1219946082}
   tipLight: {fileID: 0}
-  tipLightForwardOffset: 0.72
+  tipLightForwardOffset: 0
   alignTipLightToForward: 0
   autoCalibrateOnFirstPacket: 1
   rotationSmoothing: 18

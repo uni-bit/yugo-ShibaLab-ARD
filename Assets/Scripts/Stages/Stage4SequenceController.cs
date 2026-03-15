@@ -369,6 +369,8 @@ public class Stage4SequenceController : MonoBehaviour, IStageActivationHandler
         message.alignment = TextAnchor.MiddleCenter;
         message.font = overlayFont;
         message.fontSize = completionFontSize;
+        message.horizontalOverflow = HorizontalWrapMode.Overflow;
+        message.verticalOverflow = VerticalWrapMode.Overflow;
         message.text = completionMessage;
         StretchRect(message.rectTransform);
 
@@ -485,6 +487,8 @@ public class Stage4SequenceController : MonoBehaviour, IStageActivationHandler
         display.Message.alignment = TextAnchor.MiddleCenter;
         display.Message.font = overlayFont;
         display.Message.fontSize = completionFontSize;
+        display.Message.horizontalOverflow = HorizontalWrapMode.Overflow;
+        display.Message.verticalOverflow = VerticalWrapMode.Overflow;
         display.Message.text = completionMessage;
         StretchRect(display.Message.rectTransform);
         ConfigureMessageRect(display.Message.rectTransform, displayIndex);

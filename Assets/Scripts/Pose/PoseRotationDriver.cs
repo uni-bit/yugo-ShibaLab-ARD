@@ -6,7 +6,7 @@ public class PoseRotationDriver : MonoBehaviour
     [SerializeField] private UdpQuaternionReceiver receiver;
     [SerializeField] private Transform rotationTarget;
     [SerializeField] private Light tipLight;
-    [SerializeField] private float tipLightForwardOffset = 0.2f;
+    [SerializeField] private float tipLightForwardOffset = 0.0f;
     [SerializeField] private bool alignTipLightToForward = true;
     [SerializeField] private bool autoCalibrateOnFirstPacket = true;
     [SerializeField] private float rotationSmoothing = 0f;

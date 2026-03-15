@@ -10379,7 +10379,7 @@ MonoBehaviour:
   receiver: {fileID: 1219946086}
   rotationTarget: {fileID: 735733502}
   tipLight: {fileID: 2015271499}
-  tipLightForwardOffset: 0.72
+  tipLightForwardOffset: 0
   alignTipLightToForward: 0
   autoCalibrateOnFirstPacket: 1
   rotationSmoothing: 18

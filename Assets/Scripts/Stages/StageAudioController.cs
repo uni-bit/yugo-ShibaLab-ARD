@@ -122,48 +122,57 @@ public class StageAudioController : MonoBehaviour
 #if UNITY_EDITOR
     private void ForceLoadClipsInEditor()
     {
-        AudioClip LoadIfNull(AudioClip clip, string searchStr)
+        AudioClip LoadIfNullAndMatch(AudioClip clip, string searchStr)
         {
             if (clip != null) return clip;
             string[] guids = UnityEditor.AssetDatabase.FindAssets(searchStr + " t:AudioClip");
+            foreach (var guid in guids)
+            {
+                string path = UnityEditor.AssetDatabase.GUIDToAssetPath(guid);
+                if (System.IO.Path.GetFileNameWithoutExtension(path).Contains(searchStr))
+                {
+                    return UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>(path);
+                }
+            }
             if (guids.Length > 0)
                 return UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>(UnityEditor.AssetDatabase.GUIDToAssetPath(guids[0]));
             return null;
         }
 
-        AudioClip[] LoadArrayIfEmpty(AudioClip[] clips, string[] searchStrs)
+        AudioClip[] LoadArrayIfEmptyAndMatch(AudioClip[] clips, string[] searchStrs)
         {
             if (clips != null && clips.Length > 0 && clips[0] != null) return clips;
             var list = new System.Collections.Generic.List<AudioClip>();
             foreach (var s in searchStrs)
             {
-                var c = LoadIfNull(null, s);
+                var c = LoadIfNullAndMatch(null, s);
                 if (c != null) list.Add(c);
             }
             return list.ToArray();
         }
 
-        stage1Ambient = LoadIfNull(stage1Ambient, "stage1environment");
-        stage1ExtraAmbients = LoadArrayIfEmpty(stage1ExtraAmbients, new[] { "forest-base", "kotori", "river", "suzumusi", "wind" });
-        stage2Ambient = LoadIfNull(stage2Ambient, "stage2environment");
-        stage2ExtraAmbients = LoadArrayIfEmpty(stage2ExtraAmbients, new[] { "doukutu" });
-        stage3Ambient = LoadIfNull(stage3Ambient, "stage3environment");
-        commonSuccess = LoadIfNull(commonSuccess, "succes");
+        stage1Ambient = LoadIfNullAndMatch(stage1Ambient, "stage1environment");
+        stage1ExtraAmbients = LoadArrayIfEmptyAndMatch(stage1ExtraAmbients, new[] { "forest-base", "kotori", "river", "suzumusi", "wind" });
+        stage2Ambient = LoadIfNullAndMatch(stage2Ambient, "stage2environment");
+        stage2ExtraAmbients = LoadArrayIfEmptyAndMatch(stage2ExtraAmbients, new[] { "doukutu" });
+        stage3Ambient = LoadIfNullAndMatch(stage3Ambient, "stage3environment");
+        commonSuccess = LoadIfNullAndMatch(commonSuccess, "succes");
 
-        stage1AnimalMoves = LoadArrayIfEmpty(stage1AnimalMoves, new[] { "animal-move-gimmick", "doubutuidou" });
-        stage1LeafMoves = LoadArrayIfEmpty(stage1LeafMoves, new[] { "tree-move-reaf-gimmick", "kusa-syoudoubutu" });
-        stage1SoilMove = LoadIfNull(stage1SoilMove, "tree-move-soil-gimmick");
+        stage1AnimalMoves = LoadArrayIfEmptyAndMatch(stage1AnimalMoves, new[] { "animal-move-gimmick", "doubutuidou" });
+        stage1LeafMoves = LoadArrayIfEmptyAndMatch(stage1LeafMoves, new[] { "tree-move-reaf-gimmick", "kusa-syoudoubutu" });
+        stage1SoilMove = LoadIfNullAndMatch(stage1SoilMove, "tree-move-soil-gimmick");
 
-        stage2Destroy = LoadIfNull(stage2Destroy, "破壊音");
-        stage2DestroySecondary = LoadIfNull(stage2DestroySecondary, "破壊音2");
-        stage2Explosion = LoadIfNull(stage2Explosion, "爆発");
+        stage2Destroy = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>(Stage2DestroyPath);
+        stage2DestroySecondary = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>(Stage2DestroyPath2);
+        stage2Explosion = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>(Stage2ExplosionPath);
 
-        stage2WaterDrops = LoadArrayIfEmpty(stage2WaterDrops, new[] { "Water_Drop03-1", "Water_Drop03-2", "Water_Drop03-3", "Water_Drop03-4" });
+        stage2WaterDrops = LoadArrayIfEmptyAndMatch(stage2WaterDrops, new[] { "Water_Drop03-1", "Water_Drop03-2", "Water_Drop03-3", "Water_Drop03-4" });
 
-        stage3RockRise = LoadIfNull(stage3RockRise, "岩が浮く瞬間の振動音1");
-        stage3StoneFall = LoadIfNull(stage3StoneFall, "砂や小石が落ちる音2");
+        // Unicode NFD/NFC safe partial match names for FindAssets:
+        stage3RockRise = LoadIfNullAndMatch(stage3RockRise, "瞬間の振動音1");
+        stage3StoneFall = LoadIfNullAndMatch(stage3StoneFall, "落ちる音2");
 
-        stage3GlowClips = LoadArrayIfEmpty(stage3GlowClips, new[] { "hikari1", "hikari2", "hikari3" });
+        stage3GlowClips = LoadArrayIfEmptyAndMatch(stage3GlowClips, new[] { "hikari1", "hikari2", "hikari3" });
     }
 #endif
 
@@ -729,6 +738,7 @@ public class StageAudioController : MonoBehaviour
     }
 
 #if UNITY_EDITOR
+    [ContextMenu("Auto Assign Clips")]
     public void AutoAssignClips()
     {
         stage1Ambient = LoadClip(Stage1AmbientPath);

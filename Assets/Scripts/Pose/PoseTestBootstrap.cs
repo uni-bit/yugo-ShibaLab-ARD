@@ -41,7 +41,7 @@ public class PoseTestBootstrap : MonoBehaviour
     private const float FrontScreenWidth = 2.30f;
     private const float ScreenDistance = FrontScreenWidth * 0.5f;
     private const float ScreenHeightWorld = FrontScreenWidth * (1080f / 1920f);
-    private const float DefaultViewerDistanceFromScreens = 1.55f;
+    private const float DefaultViewerDistanceFromScreens = 2.0f;
     private const float ViewerHeight = 0f;
     private const int WindowedDefaultWidth = 1920;
     private const int WindowedDefaultHeight = 1080;
@@ -460,7 +460,7 @@ public class PoseTestBootstrap : MonoBehaviour
 
         GameObject tipLightObject = new GameObject("Tip Light");
         tipLightObject.transform.SetParent(rotationPivot.transform, false);
-        tipLightObject.transform.localPosition = new Vector3(0f, 0f, 0.72f);
+        tipLightObject.transform.localPosition = new Vector3(0f, 0f, 0.0f);
         tipLightObject.transform.localRotation = Quaternion.identity;
 
         Light tipLight = tipLightObject.AddComponent<Light>();
@@ -474,7 +474,7 @@ public class PoseTestBootstrap : MonoBehaviour
 
         ApplySpotlightOnlyLighting(tipLight, Application.isPlaying);
 
-        driver.Configure(receiver, rotationPivot.transform, tipLight, 0.72f);
+        driver.Configure(receiver, rotationPivot.transform, tipLight, 0.0f);
         driver.SetTipLightAlignment(false);
         visualizer.Configure(receiver, tipLight);
         visualizer.ConfigureSurfaces(frontSurface, leftSurface);
